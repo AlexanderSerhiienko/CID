@@ -106,7 +106,7 @@ tools:
 - Make sure no `.env` values are hardcoded anywhere
 
 **Acceptance criteria:**
-- [ ] App is live on a public URL
-- [ ] `/api/health` returns 200 with DB + Redis status
-- [ ] Full pipeline works on production (ingest → publish)
-- [ ] CI deploys automatically on push to `main`
+- [x] App is live on a public URL
+- [x] `/api/health` returns 200 with DB + Redis status
+- [x] Full pipeline works on production (ingest → publish)
+- [x] CI deploys automatically on push to `main`
