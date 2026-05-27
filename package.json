@@ -17,9 +17,11 @@
     "events:demote-low-auto-published": "tsx scripts/backfill-demote-low-severity-auto-published.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "mcp": "tsx mcp/server.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^6.18.0",
     "@types/topojson-client": "^3.1.5",
     "bullmq": "^5.61.0",
