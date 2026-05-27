@@ -33,9 +33,9 @@ claude mcp list
 ### Usage examples in Claude Code
 
 ```
-покажи статистику пайплайна
-запусти ингестинг
-покажи очередь на ревью
+show pipeline stats
+trigger ingestion
+show review queue
 ```
 
 ## Development

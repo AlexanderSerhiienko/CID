@@ -73,11 +73,11 @@ tools:
 - Add `mcp/README.md` explaining how to connect it to Claude Code
 
 **Acceptance criteria:**
-- [ ] GitHub MCP connected and working in Claude Code
-- [ ] PostgreSQL MCP connected and working in Claude Code
-- [ ] Custom MCP server runs locally (`node mcp/server.js`)
-- [ ] All 3 custom tools return valid responses
-- [ ] `mcp/README.md` explains setup
+- [x] GitHub MCP connected and working in Claude Code
+- [x] PostgreSQL MCP connected and working in Claude Code
+- [x] Custom MCP server runs locally (`npm run mcp`)
+- [x] All 3 custom tools return valid responses
+- [x] `mcp/README.md` explains setup
 
 ---
 
