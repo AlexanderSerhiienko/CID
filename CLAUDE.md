@@ -32,6 +32,7 @@ Read `agents/devops.md` first.
 - Never mark a task done if tests are failing
 - Never add a runtime dependency on an external paid AI API
 - Pipeline changes (lib/pipeline/) always need tests
+- Never add "Co-Authored-By" lines to commit messages
 
 ---
 
