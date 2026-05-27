@@ -8,17 +8,30 @@ import { rankMergeSuggestions } from "@/lib/review/merge-suggestions";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReviewPage() {
-  const [events, mergeTargets] = await Promise.all([
+const PAGE_SIZE = 20;
+
+export default async function ReviewPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10));
+  const skip = (page - 1) * PAGE_SIZE;
+
+  const [events, total, mergeTargets] = await Promise.all([
     prisma.riskEvent.findMany({
       where: { status: EventStatus.NEEDS_REVIEW },
       orderBy: { createdAt: "asc" },
+      skip,
+      take: PAGE_SIZE,
       include: {
         rawArticles: {
           include: { source: true }
         }
       }
     }),
+    prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW } }),
     prisma.riskEvent.findMany({
       where: { status: { not: EventStatus.REJECTED } },
       orderBy: { updatedAt: "desc" },
@@ -38,86 +51,129 @@ export default async function ReviewPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">Review Queue</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Uncertain extracted events wait here before publication.
-        </p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Review Queue</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Uncertain extracted events wait here before publication.
+          </p>
+        </div>
+        {total > 0 && (
+          <span className="text-sm text-muted-foreground">
+            {total} event{total !== 1 ? "s" : ""} awaiting review
+          </span>
+        )}
       </div>
 
-      {events.length === 0 ? (
+      {events.length === 0 && page === 1 ? (
         <EmptyState
           title="Review queue is empty"
           detail="Run ingestion or lower confidence in extraction rules to generate review candidates."
         />
       ) : (
-        <div className="space-y-4">
-          {events.map((event) => {
-            const mergeSuggestions = rankMergeSuggestions(event, mergeTargets).slice(0, 12);
+        <>
+          <div className="space-y-4">
+            {events.map((event) => {
+              const mergeSuggestions = rankMergeSuggestions(event, mergeTargets).slice(0, 12);
 
-            return (
-            <article key={event.id} className="rounded-md border border-border bg-card p-4">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    <Badge tone="blue">{event.category}</Badge>
-                    <Badge tone="yellow">{event.severity}</Badge>
-                    <Badge>{Math.round(event.confidence * 100)}% confidence</Badge>
-                  </div>
-                  <Link href={`/events/${event.id}`} className="text-lg font-semibold">
-                    {event.title}
-                  </Link>
-                  <p className="mt-2 max-w-4xl text-sm text-muted-foreground">{event.summary}</p>
-                  <div className="mt-3 text-sm">
-                    Location: {[event.city, event.country].filter(Boolean).join(", ") || "Unknown"} ·
-                    location confidence {Math.round(event.locationConfidence * 100)}%
-                  </div>
-                </div>
-                <ReviewActions event={event} mergeTargets={mergeSuggestions} />
-              </div>
-
-              <div className="mt-4 border-t border-border pt-3 text-sm">
-                <div className="font-medium">Evidence</div>
-                <div className="mt-2 space-y-2">
-                  {event.rawArticles.map((article) => (
-                    <div key={article.id} className="rounded-md border border-border bg-background p-3">
-                      <a className="text-primary" href={article.url} target="_blank">
-                        {article.title}
-                      </a>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {article.source.name}
-                        {article.publishedAt ? ` · ${article.publishedAt.toISOString().slice(0, 10)}` : ""}
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                        {article.rawText}
-                      </p>
+              return (
+              <article key={event.id} className="rounded-md border border-border bg-card p-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      <Badge tone="blue">{event.category}</Badge>
+                      <Badge tone="yellow">{event.severity}</Badge>
+                      <Badge>{Math.round(event.confidence * 100)}% confidence</Badge>
                     </div>
-                  ))}
+                    <Link href={`/events/${event.id}`} className="text-lg font-semibold">
+                      {event.title}
+                    </Link>
+                    <p className="mt-2 max-w-4xl text-sm text-muted-foreground">{event.summary}</p>
+                    <div className="mt-3 text-sm">
+                      Location: {[event.city, event.country].filter(Boolean).join(", ") || "Unknown"} ·
+                      location confidence {Math.round(event.locationConfidence * 100)}%
+                    </div>
+                  </div>
+                  <ReviewActions event={event} mergeTargets={mergeSuggestions} />
                 </div>
-              </div>
 
-              <div className="mt-4 border-t border-border pt-3 text-sm">
-                <div className="font-medium">Extraction signals</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {readSignals(event.signals).length > 0 ? (
-                    readSignals(event.signals).map((signal, index) => (
-                      <span
-                        key={`${signal.label}-${index}`}
-                        title={signal.detail}
-                        className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
-                      >
-                        {signal.label}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-muted-foreground">No extraction signals recorded.</span>
-                  )}
+                <div className="mt-4 border-t border-border pt-3 text-sm">
+                  <div className="font-medium">Evidence</div>
+                  <div className="mt-2 space-y-2">
+                    {event.rawArticles.map((article) => (
+                      <div key={article.id} className="rounded-md border border-border bg-background p-3">
+                        <a className="text-primary" href={article.url} target="_blank">
+                          {article.title}
+                        </a>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {article.source.name}
+                          {article.publishedAt ? ` · ${article.publishedAt.toISOString().slice(0, 10)}` : ""}
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                          {article.rawText}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+
+                <div className="mt-4 border-t border-border pt-3 text-sm">
+                  <div className="font-medium">Extraction signals</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {readSignals(event.signals).length > 0 ? (
+                      readSignals(event.signals).map((signal, index) => (
+                        <span
+                          key={`${signal.label}-${index}`}
+                          title={signal.detail}
+                          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
+                        >
+                          {signal.label}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No extraction signals recorded.</span>
+                    )}
+                  </div>
+                </div>
+              </article>
+              );
+            })}
+          </div>
+
+          {Math.ceil(total / PAGE_SIZE) > 1 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                Page {page} of {Math.ceil(total / PAGE_SIZE)}
+              </span>
+              <div className="flex gap-2">
+                {page > 1 ? (
+                  <Link
+                    href={`/admin/review${page > 2 ? `?page=${page - 1}` : ""}`}
+                    className="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted"
+                  >
+                    ← Prev
+                  </Link>
+                ) : (
+                  <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-40">
+                    ← Prev
+                  </span>
+                )}
+                {page < Math.ceil(total / PAGE_SIZE) ? (
+                  <Link
+                    href={`/admin/review?page=${page + 1}`}
+                    className="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted"
+                  >
+                    Next →
+                  </Link>
+                ) : (
+                  <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-40">
+                    Next →
+                  </span>
+                )}
               </div>
-            </article>
-            );
-          })}
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 50;
+
 function tone(severity: Severity) {
   if (severity === Severity.CRITICAL || severity === Severity.HIGH) {
     return "red";
@@ -23,21 +25,41 @@ export default async function EventsPage({
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
   const status = typeof params.status === "string" ? params.status : EventStatus.PUBLISHED;
+  const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10));
+  const skip = (page - 1) * PAGE_SIZE;
 
-  const events = await prisma.riskEvent.findMany({
-    where: {
-      status: status as EventStatus,
-      OR: q
-        ? [
-            { title: { contains: q, mode: "insensitive" } },
-            { summary: { contains: q, mode: "insensitive" } },
-            { country: { contains: q, mode: "insensitive" } },
-            { city: { contains: q, mode: "insensitive" } }
-          ]
-        : undefined
-    },
-    orderBy: { createdAt: "desc" }
-  });
+  const where = {
+    status: status as EventStatus,
+    OR: q
+      ? [
+          { title: { contains: q, mode: "insensitive" as const } },
+          { summary: { contains: q, mode: "insensitive" as const } },
+          { country: { contains: q, mode: "insensitive" as const } },
+          { city: { contains: q, mode: "insensitive" as const } }
+        ]
+      : undefined
+  };
+
+  const [events, total] = await Promise.all([
+    prisma.riskEvent.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: PAGE_SIZE
+    }),
+    prisma.riskEvent.count({ where })
+  ]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  function pageUrl(p: number) {
+    const qs = new URLSearchParams();
+    if (q) qs.set("q", q);
+    if (status !== EventStatus.PUBLISHED) qs.set("status", status);
+    if (p > 1) qs.set("page", String(p));
+    const str = qs.toString();
+    return `/events${str ? `?${str}` : ""}`;
+  }
 
   return (
     <div className="space-y-5">
@@ -110,6 +132,40 @@ export default async function EventsPage({
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Page {page} of {totalPages} · {total} events
+          </span>
+          <div className="flex gap-2">
+            {page > 1 ? (
+              <Link
+                href={pageUrl(page - 1)}
+                className="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted"
+              >
+                ← Prev
+              </Link>
+            ) : (
+              <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-40">
+                ← Prev
+              </span>
+            )}
+            {page < totalPages ? (
+              <Link
+                href={pageUrl(page + 1)}
+                className="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted"
+              >
+                Next →
+              </Link>
+            ) : (
+              <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-40">
+                Next →
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
