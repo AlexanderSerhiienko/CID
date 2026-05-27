@@ -2,6 +2,15 @@ import { EventCategory, EventStatus, Severity, Source } from "@prisma/client";
 import { PipelineSignal } from "@/lib/pipeline/extraction";
 import { clamp } from "@/lib/utils";
 
+const TRUST_SCORE_WEIGHT = 0.25;
+const CONFIRMED_CONFIDENCE_BOOST = 0.15;
+const UNCERTAIN_CONFIDENCE_PENALTY = 0.1;
+const AUTO_PUBLISH_CONFIDENCE_THRESHOLD = 0.8;
+const AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD = 0.6;
+
+const HIGH_SEVERITY_ESCALATION_TERMS = ["death", "deaths", "hospitalized", "evacuation", "critical infrastructure"];
+const CRITICAL_SEVERITY_ESCALATION_TERMS = ["mass casualty", "catastrophic", "state of emergency"];
+
 export function scoreCandidate(input: {
   category: EventCategory;
   severity: Severity;
@@ -11,7 +20,7 @@ export function scoreCandidate(input: {
   rawText: string;
 }) {
   const lower = input.rawText.toLowerCase();
-  let confidence = input.confidence + input.source.trustScore * 0.25;
+  let confidence = input.confidence + input.source.trustScore * TRUST_SCORE_WEIGHT;
   const signals: PipelineSignal[] = [
     {
       kind: "source",
@@ -22,29 +31,29 @@ export function scoreCandidate(input: {
   ];
 
   if (lower.includes("confirmed")) {
-    confidence += 0.15;
+    confidence += CONFIRMED_CONFIDENCE_BOOST;
     signals.push({
       kind: "confidence",
       label: "confidence:confirmed",
       detail: "Text mentions confirmed information.",
-      weight: 0.15
+      weight: CONFIRMED_CONFIDENCE_BOOST
     });
   }
 
   if (lower.includes("suspected") || lower.includes("possible")) {
-    confidence -= 0.1;
+    confidence -= UNCERTAIN_CONFIDENCE_PENALTY;
     signals.push({
       kind: "confidence",
       label: "confidence:uncertain_language",
       detail: "Text mentions suspected or possible information.",
-      weight: -0.1
+      weight: -UNCERTAIN_CONFIDENCE_PENALTY
     });
   }
 
   confidence = clamp(confidence, 0, 1);
 
   let severity = input.severity;
-  if (["death", "deaths", "hospitalized", "evacuation", "critical infrastructure"].some((word) => lower.includes(word))) {
+  if (HIGH_SEVERITY_ESCALATION_TERMS.some((word) => lower.includes(word))) {
     severity = Severity.HIGH;
     signals.push({
       kind: "severity",
@@ -53,7 +62,7 @@ export function scoreCandidate(input: {
     });
   }
 
-  if (["mass casualty", "catastrophic", "state of emergency"].some((word) => lower.includes(word))) {
+  if (CRITICAL_SEVERITY_ESCALATION_TERMS.some((word) => lower.includes(word))) {
     severity = Severity.CRITICAL;
     signals.push({
       kind: "severity",
@@ -63,8 +72,8 @@ export function scoreCandidate(input: {
   }
 
   const canAutoPublish =
-    confidence >= 0.8 &&
-    input.locationConfidence >= 0.6 &&
+    confidence >= AUTO_PUBLISH_CONFIDENCE_THRESHOLD &&
+    input.locationConfidence >= AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD &&
     input.category !== EventCategory.UNKNOWN &&
     (severity === Severity.HIGH || severity === Severity.CRITICAL);
 

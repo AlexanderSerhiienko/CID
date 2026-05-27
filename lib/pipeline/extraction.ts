@@ -1,6 +1,28 @@
 import { EventCategory, Severity } from "@prisma/client";
 import { stripHtml } from "@/lib/utils";
 
+const CITY_MATCH_CONFIDENCE = 0.85;
+const COUNTRY_MATCH_CONFIDENCE = 0.65;
+const TEXT_LOCATION_CONFIDENCE_PENALTY = 0.15;
+const MIN_LOCATION_CONFIDENCE = 0.4;
+const CATEGORY_SIGNAL_WEIGHT = 0.25;
+const CONFIDENCE_BASE = 0.25;
+const CONFIDENCE_CATEGORY_BONUS = 0.25;
+const CONFIDENCE_LOCATION_WEIGHT = 0.25;
+const CONFIDENCE_SEVERITY_LOW_BONUS = 0.05;
+const CONFIDENCE_SEVERITY_HIGH_BONUS = 0.15;
+
+const HIGH_SEVERITY_KEYWORDS = ["death", "deaths", "fatal", "evacuation", "critical", "emergency"];
+const MEDIUM_SEVERITY_KEYWORDS = ["confirmed", "hospitalized", "magnitude", "breach", "outage"];
+
+type LocationResult = {
+  country: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  locationConfidence: number;
+};
+
 export type ExtractedEvent = {
   title: string;
   summary: string;
@@ -162,7 +184,7 @@ const nonIncidentKeywords = [
   "world health day"
 ];
 
-function detectCategory(text: string) {
+function detectCategory(text: string): EventCategory {
   const lower = text.toLowerCase();
   if (isMagnitudeEarthquakeText(lower)) {
     return EventCategory.NATURAL_DISASTER;
@@ -178,7 +200,7 @@ function detectCategory(text: string) {
   return match && match.hits > 0 ? match.category : EventCategory.UNKNOWN;
 }
 
-function detectLocation(input: { title: string; text: string }) {
+function detectLocation(input: { title: string; text: string }): LocationResult {
   const titleMatch = findLocation(input.title);
   if (titleMatch) {
     return titleMatch;
@@ -188,7 +210,7 @@ function detectLocation(input: { title: string; text: string }) {
   if (textMatch) {
     return {
       ...textMatch,
-      locationConfidence: Math.max(0.4, Number((textMatch.locationConfidence - 0.15).toFixed(2)))
+      locationConfidence: Math.max(MIN_LOCATION_CONFIDENCE, Number((textMatch.locationConfidence - TEXT_LOCATION_CONFIDENCE_PENALTY).toFixed(2)))
     };
   }
 
@@ -201,7 +223,7 @@ function detectLocation(input: { title: string; text: string }) {
   };
 }
 
-function findLocation(text: string) {
+function findLocation(text: string): LocationResult | null {
   const lower = text.toLowerCase();
   const match = knownLocations
     .flatMap((location) =>
@@ -224,16 +246,16 @@ function findLocation(text: string) {
     city: cityHit ? match.city : null,
     latitude: match.latitude,
     longitude: match.longitude,
-    locationConfidence: cityHit ? 0.85 : 0.65
+    locationConfidence: cityHit ? CITY_MATCH_CONFIDENCE : COUNTRY_MATCH_CONFIDENCE
   };
 }
 
-function hasLocationAlias(text: string, alias: string) {
+function hasLocationAlias(text: string, alias: string): boolean {
   const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(^|[^a-z])${escaped}([^a-z]|$)`, "i").test(text);
 }
 
-function detectSeverity(text: string) {
+function detectSeverity(text: string): Severity {
   const lower = text.toLowerCase();
   if (isMagnitudeEarthquakeText(lower)) {
     const magnitude = earthquakeMagnitude(lower);
@@ -245,38 +267,38 @@ function detectSeverity(text: string) {
     }
   }
 
-  if (["death", "deaths", "fatal", "evacuation", "critical", "emergency"].some((word) => lower.includes(word))) {
+  if (HIGH_SEVERITY_KEYWORDS.some((word) => lower.includes(word))) {
     return Severity.HIGH;
   }
 
-  if (["confirmed", "hospitalized", "magnitude", "breach", "outage"].some((word) => lower.includes(word))) {
+  if (MEDIUM_SEVERITY_KEYWORDS.some((word) => lower.includes(word))) {
     return Severity.MEDIUM;
   }
 
   return Severity.LOW;
 }
 
-function detectRiskSignals(text: string) {
+function detectRiskSignals(text: string): string[] {
   const lower = text.toLowerCase();
   const signals = riskSignalKeywords.filter((keyword) => lower.includes(keyword));
   return isMagnitudeEarthquakeText(lower) ? [...new Set([...signals, "earthquake", "magnitude"])] : signals;
 }
 
-function isMagnitudeEarthquakeText(text: string) {
+function isMagnitudeEarthquakeText(text: string): boolean {
   return /\bm\s?\d(?:\.\d)?\s+-/.test(text);
 }
 
-function earthquakeMagnitude(text: string) {
+function earthquakeMagnitude(text: string): number {
   return Number(text.match(/\bm\s?(\d(?:\.\d)?)/)?.[1] ?? 0);
 }
 
 function buildExtractionSignals(input: {
   category: EventCategory;
-  location: ReturnType<typeof detectLocation>;
+  location: LocationResult;
   severity: Severity;
   riskSignals: string[];
   isLikelyRiskEvent: boolean;
-}) {
+}): PipelineSignal[] {
   const signals: PipelineSignal[] = input.riskSignals.slice(0, 8).map((keyword) => ({
     kind: "keyword",
     label: `keyword:${keyword}`,
@@ -288,7 +310,7 @@ function buildExtractionSignals(input: {
       kind: "category",
       label: `category:${input.category}`,
       detail: "Category selected by deterministic keyword rules.",
-      weight: 0.25
+      weight: CATEGORY_SIGNAL_WEIGHT
     });
   }
 
@@ -325,12 +347,12 @@ function buildExtractionSignals(input: {
   return signals;
 }
 
-function isNonIncidentNews(text: string) {
+function isNonIncidentNews(text: string): boolean {
   const lower = text.toLowerCase();
   return nonIncidentKeywords.some((keyword) => lower.includes(keyword));
 }
 
-function summarize(title: string, rawText: string) {
+function summarize(title: string, rawText: string): string {
   const text = stripHtml(rawText);
   const firstSentence = text.split(/(?<=[.!?])\s+/)[0];
   return firstSentence && firstSentence.length > title.length ? firstSentence.slice(0, 280) : title;
@@ -351,10 +373,10 @@ export function extractEventFromArticle(input: { title: string; rawText: string 
       )
     );
   const confidence =
-    0.25 +
-    (category === EventCategory.UNKNOWN ? 0 : 0.25) +
-    location.locationConfidence * 0.25 +
-    (severity === Severity.LOW ? 0.05 : 0.15);
+    CONFIDENCE_BASE +
+    (category === EventCategory.UNKNOWN ? 0 : CONFIDENCE_CATEGORY_BONUS) +
+    location.locationConfidence * CONFIDENCE_LOCATION_WEIGHT +
+    (severity === Severity.LOW ? CONFIDENCE_SEVERITY_LOW_BONUS : CONFIDENCE_SEVERITY_HIGH_BONUS);
 
   const signals = buildExtractionSignals({
     category,

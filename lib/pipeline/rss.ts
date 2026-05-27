@@ -6,6 +6,8 @@ import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
+const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
+
 const parser = new Parser({
   timeout: 10_000,
   headers: {
@@ -14,7 +16,7 @@ const parser = new Parser({
   }
 });
 
-function parseDate(value: string | undefined) {
+function parseDate(value: string | undefined): Date | null {
   if (!value) {
     return null;
   }
@@ -112,7 +114,7 @@ export async function ingestRssSource(sourceId: string) {
       await prisma.riskEvent.update({
         where: { id: duplicateEvent.id },
         data: {
-          confidence: Math.min(1, duplicateEvent.confidence + 0.1)
+          confidence: Math.min(1, duplicateEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT)
         }
       });
       continue;
