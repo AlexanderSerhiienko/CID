@@ -1,0 +1,92 @@
+import { describe, expect, it } from "vitest";
+import { EventCategory } from "@prisma/client";
+import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
+import { jaccardSimilarity } from "@/lib/pipeline/similarity";
+
+describe("jaccardSimilarity", () => {
+  it("detects similar titles", () => {
+    expect(
+      jaccardSimilarity(
+        "Hantavirus cases reported in Patagonia",
+        "Argentina investigates new hantavirus cases"
+      )
+    ).toBeGreaterThan(0.2);
+  });
+});
+
+describe("isDuplicateCandidate", () => {
+  it("matches likely duplicate events", () => {
+    const createdAt = new Date("2026-05-18T10:00:00Z");
+
+    expect(
+      isDuplicateCandidate(
+        {
+          title: "Hantavirus cases reported in Patagonia",
+          summary: "Health officials confirmed cases in southern Argentina.",
+          category: EventCategory.DISEASE_OUTBREAK,
+          country: "Argentina",
+          city: null,
+          publishedAt: new Date("2026-05-19T10:00:00Z")
+        },
+        {
+          title: "Argentina investigates new hantavirus cases",
+          summary: "Officials are investigating hantavirus cases in Argentina.",
+          category: EventCategory.DISEASE_OUTBREAK,
+          country: "Argentina",
+          city: null,
+          createdAt
+        }
+      )
+    ).toBe(true);
+  });
+
+  it("does not merge different categories", () => {
+    const createdAt = new Date("2026-05-18T10:00:00Z");
+
+    expect(
+      isDuplicateCandidate(
+        {
+          title: "Airport disruption in Paris",
+          summary: "Flights delayed after airport strike.",
+          category: EventCategory.TRANSPORT_DISRUPTION,
+          country: "France",
+          city: "Paris",
+          publishedAt: createdAt
+        },
+        {
+          title: "Paris protest causes clashes",
+          summary: "Political unrest reported in Paris.",
+          category: EventCategory.POLITICAL_UNREST,
+          country: "France",
+          city: "Paris",
+          createdAt
+        }
+      )
+    ).toBe(false);
+  });
+
+  it("does not merge unknown-location events automatically", () => {
+    const createdAt = new Date("2026-05-18T10:00:00Z");
+
+    expect(
+      isDuplicateCandidate(
+        {
+          title: "Green forest fire notification",
+          summary: "A forest fire started near an unknown location.",
+          category: EventCategory.NATURAL_DISASTER,
+          country: null,
+          city: null,
+          publishedAt: createdAt
+        },
+        {
+          title: "Green forest fire notification",
+          summary: "A forest fire started near another unknown location.",
+          category: EventCategory.NATURAL_DISASTER,
+          country: null,
+          city: null,
+          createdAt
+        }
+      )
+    ).toBe(false);
+  });
+});

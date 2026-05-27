@@ -1,0 +1,115 @@
+import Link from "next/link";
+import { EventStatus, Severity } from "@prisma/client";
+import { Badge } from "@/components/ui/badge";
+import { prisma } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+
+function tone(severity: Severity) {
+  if (severity === Severity.CRITICAL || severity === Severity.HIGH) {
+    return "red";
+  }
+  if (severity === Severity.MEDIUM) {
+    return "yellow";
+  }
+  return "green";
+}
+
+export default async function EventsPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const q = typeof params.q === "string" ? params.q : "";
+  const status = typeof params.status === "string" ? params.status : EventStatus.PUBLISHED;
+
+  const events = await prisma.riskEvent.findMany({
+    where: {
+      status: status as EventStatus,
+      OR: q
+        ? [
+            { title: { contains: q, mode: "insensitive" } },
+            { summary: { contains: q, mode: "insensitive" } },
+            { country: { contains: q, mode: "insensitive" } },
+            { city: { contains: q, mode: "insensitive" } }
+          ]
+        : undefined
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-semibold">Events</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Search and filter normalized risk events.
+        </p>
+      </div>
+
+      <form className="flex flex-col gap-3 rounded-md border border-border bg-card p-4 md:flex-row">
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Search title, summary, country, city"
+          className="h-10 flex-1 rounded-md border border-border bg-background px-3 text-sm"
+        />
+        <select
+          name="status"
+          defaultValue={status}
+          className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+        >
+          {Object.values(EventStatus).map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+        <button className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+          Filter
+        </button>
+      </form>
+
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3">Event</th>
+              <th className="px-4 py-3">Category</th>
+              <th className="px-4 py-3">Location</th>
+              <th className="px-4 py-3">Severity</th>
+              <th className="px-4 py-3">Confidence</th>
+              <th className="px-4 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {events.map((event) => (
+              <tr key={event.id} className="hover:bg-muted/60">
+                <td className="max-w-[360px] px-4 py-3">
+                  <Link href={`/events/${event.id}`} className="font-medium">
+                    {event.title}
+                  </Link>
+                  <p className="mt-1 line-clamp-1 text-muted-foreground">{event.summary}</p>
+                </td>
+                <td className="px-4 py-3">{event.category}</td>
+                <td className="px-4 py-3">
+                  {[event.city, event.country].filter(Boolean).join(", ") || "Unknown"}
+                </td>
+                <td className="px-4 py-3">
+                  <Badge tone={tone(event.severity)}>{event.severity}</Badge>
+                </td>
+                <td className="px-4 py-3">{Math.round(event.confidence * 100)}%</td>
+                <td className="px-4 py-3">
+                  <Badge tone={event.status === EventStatus.PUBLISHED ? "green" : "blue"}>
+                    {event.status}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

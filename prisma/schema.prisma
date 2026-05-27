@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  RSS
+  OPEN_DATA
+  OFFICIAL_FEED
+  NEWS
+}
+
+enum EventCategory {
+  DISEASE_OUTBREAK
+  NATURAL_DISASTER
+  CYBER_ATTACK
+  TRANSPORT_DISRUPTION
+  POLITICAL_UNREST
+  FOOD_SAFETY_ALERT
+  UNKNOWN
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EventStatus {
+  DRAFT
+  NEEDS_REVIEW
+  PUBLISHED
+  REJECTED
+}
+
+model Source {
+  id          String       @id @default(cuid())
+  name        String
+  url         String       @unique
+  type        SourceType   @default(RSS)
+  enabled     Boolean      @default(true)
+  trustScore  Float        @default(0.5)
+  rawArticles RawArticle[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([enabled])
+}
+
+model RawArticle {
+  id          String          @id @default(cuid())
+  sourceId    String
+  source      Source          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  title       String
+  url         String          @unique
+  publishedAt DateTime?
+  contentHash String
+  rawText     String
+  riskEventId String?
+  riskEvent   RiskEvent?      @relation(fields: [riskEventId], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now())
+
+  @@index([sourceId])
+  @@index([contentHash])
+  @@index([publishedAt])
+}
+
+model RiskEvent {
+  id                 String        @id @default(cuid())
+  title              String
+  summary            String
+  category           EventCategory @default(UNKNOWN)
+  country            String?
+  city               String?
+  latitude           Float?
+  longitude          Float?
+  locationConfidence Float         @default(0)
+  severity           Severity      @default(LOW)
+  confidence         Float         @default(0)
+  status             EventStatus   @default(NEEDS_REVIEW)
+  signals            Json          @default("[]")
+  sourceUrl          String
+  rawArticles        RawArticle[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([category])
+  @@index([country, city])
+  @@index([severity])
+  @@index([status])
+  @@index([createdAt])
+}

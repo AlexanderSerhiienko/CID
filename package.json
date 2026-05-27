@@ -1,0 +1,60 @@
+{
+  "name": "crisis-intelligence-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "worker:ingest": "tsx workers/ingest-worker.ts",
+    "events:backfill-locations": "tsx scripts/backfill-event-locations.ts",
+    "events:backfill-statuses": "tsx scripts/backfill-event-statuses.ts",
+    "events:backfill-from-raw": "tsx scripts/backfill-events-from-raw-articles.ts",
+    "events:demote-low-auto-published": "tsx scripts/backfill-demote-low-severity-auto-published.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.18.0",
+    "@types/topojson-client": "^3.1.5",
+    "bullmq": "^5.61.0",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "ioredis": "^5.8.1",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
+    "next": "^15.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-leaflet": "^5.0.0",
+    "rss-parser": "^3.13.0",
+    "tailwind-merge": "^2.5.5",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.16",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.5.0",
+    "postcss": "^8.4.49",
+    "prisma": "^6.18.0",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

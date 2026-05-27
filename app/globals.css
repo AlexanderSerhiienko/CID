@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 42 20% 97%;
+  --foreground: 210 16% 13%;
+  --card: 0 0% 100%;
+  --card-foreground: 210 16% 13%;
+  --muted: 200 16% 91%;
+  --muted-foreground: 210 9% 38%;
+  --border: 210 12% 84%;
+  --primary: 196 76% 30%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 356 68% 44%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+
