@@ -15,10 +15,13 @@ export async function GET() {
 
   // Redis check
   try {
-    const redis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+    const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
+    const isTls = redisUrl.startsWith("rediss://");
+    const redis = new IORedis(redisUrl, {
       maxRetriesPerRequest: 1,
       connectTimeout: 3000,
-      lazyConnect: true
+      lazyConnect: true,
+      tls: isTls ? {} : undefined
     });
     await redis.connect();
     await redis.ping();
