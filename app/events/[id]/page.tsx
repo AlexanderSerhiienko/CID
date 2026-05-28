@@ -43,12 +43,30 @@ export default async function EventDetailPage({
         <h1 className="mt-3 text-2xl font-semibold">{event.title}</h1>
         <p className="mt-2 max-w-3xl text-muted-foreground">{event.summary}</p>
         <p className="mt-2 text-xs text-muted-foreground">
-          First seen{" "}
-          <span className="font-medium text-foreground">
-            {formatRelativeTime(event.createdAt, now)}
-          </span>
-          {" · "}
-          {formatDate(event.createdAt, now)}
+          {event.occurredAt ? (
+            <>
+              Occurred{" "}
+              <span className="font-medium text-foreground">
+                {formatRelativeTime(event.occurredAt, now)}
+              </span>
+              {" · "}
+              {formatDate(event.occurredAt, now)}
+              {" · "}
+              First seen{" "}
+              <span className="font-medium text-foreground">
+                {formatRelativeTime(event.createdAt, now)}
+              </span>
+            </>
+          ) : (
+            <>
+              First seen{" "}
+              <span className="font-medium text-foreground">
+                {formatRelativeTime(event.createdAt, now)}
+              </span>
+              {" · "}
+              {formatDate(event.createdAt, now)}
+            </>
+          )}
         </p>
       </div>
 

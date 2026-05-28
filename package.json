@@ -15,6 +15,7 @@
     "events:backfill-statuses": "tsx scripts/backfill-event-statuses.ts",
     "events:backfill-from-raw": "tsx scripts/backfill-events-from-raw-articles.ts",
     "events:demote-low-auto-published": "tsx scripts/backfill-demote-low-severity-auto-published.ts",
+    "events:backfill-occurred-at": "tsx scripts/backfill-occurred-at.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
