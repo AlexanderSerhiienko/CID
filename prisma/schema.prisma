@@ -40,15 +40,17 @@ enum EventStatus {
 }
 
 model Source {
-  id          String       @id @default(cuid())
-  name        String
-  url         String       @unique
-  type        SourceType   @default(RSS)
-  enabled     Boolean      @default(true)
-  trustScore  Float        @default(0.5)
-  rawArticles RawArticle[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  name           String
+  url            String       @unique
+  type           SourceType   @default(RSS)
+  enabled        Boolean      @default(true)
+  trustScore     Float        @default(0.5)
+  lastIngestedAt DateTime?
+  lastError      String?
+  rawArticles    RawArticle[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([enabled])
 }
