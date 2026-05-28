@@ -11,6 +11,16 @@ import { normalizeUrl, stripHtml } from "@/lib/utils";
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
 const GEORSS_LOCATION_CONFIDENCE = 0.9;
 
+// Nominatim rate limiting: max 1 req/sec per their usage policy
+const GEOCODE_MIN_INTERVAL_MS = 1_100;
+let lastGeocodeMs = 0;
+
+// Groq circuit breaker: open after N consecutive null returns, reset after 5 minutes
+const GROQ_CIRCUIT_THRESHOLD = 3;
+const GROQ_CIRCUIT_RESET_MS = 5 * 60 * 1_000;
+let groqConsecutiveNulls = 0;
+let groqCircuitOpenUntil = 0;
+
 // Custom fields for GeoRSS (used by USGS Atom feed and others)
 type GeoRssItem = {
   "georss:point"?: string;
@@ -73,6 +83,51 @@ function parseDate(value: string | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * Enforces Nominatim's 1 req/sec usage policy by waiting if the last
+ * geocode call was less than GEOCODE_MIN_INTERVAL_MS ago.
+ */
+async function throttleGeocode(): Promise<void> {
+  const now = Date.now();
+  const wait = lastGeocodeMs + GEOCODE_MIN_INTERVAL_MS - now;
+  if (wait > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, wait));
+  }
+  lastGeocodeMs = Date.now();
+}
+
+/**
+ * Wraps extractWithAI with a simple circuit breaker.
+ * After GROQ_CIRCUIT_THRESHOLD consecutive null returns, skips Groq for
+ * GROQ_CIRCUIT_RESET_MS to avoid stalling the pipeline on every article
+ * during an outage or rate-limit period.
+ */
+async function extractWithAIGuarded(
+  title: string,
+  rawText: string
+): Promise<Awaited<ReturnType<typeof extractWithAI>>> {
+  if (!process.env.GROQ_API_KEY) return null; // not configured — skip tracking
+  if (Date.now() < groqCircuitOpenUntil) return null; // circuit open
+
+  const result = await extractWithAI(title, rawText);
+
+  if (result === null) {
+    groqConsecutiveNulls += 1;
+    if (groqConsecutiveNulls >= GROQ_CIRCUIT_THRESHOLD) {
+      groqCircuitOpenUntil = Date.now() + GROQ_CIRCUIT_RESET_MS;
+      console.warn(
+        `[groq] Circuit opened after ${GROQ_CIRCUIT_THRESHOLD} consecutive failures. ` +
+          `Skipping AI extraction for ${GROQ_CIRCUIT_RESET_MS / 60_000} minutes.`
+      );
+      groqConsecutiveNulls = 0;
+    }
+  } else {
+    groqConsecutiveNulls = 0;
+  }
+
+  return result;
+}
+
 export async function ingestRssSource(sourceId: string) {
   const source = await prisma.source.findUniqueOrThrow({
     where: { id: sourceId }
@@ -94,35 +149,66 @@ export async function ingestRssSource(sourceId: string) {
     throw err;
   }
 
-  let createdArticles = 0;
-  let duplicateArticles = 0;
-  let candidateEvents = 0;
+  // Pre-process feed items to avoid duplicate work in the loop
+  type PreprocessedItem = {
+    item: (typeof feed.items)[number];
+    itemUrl: string;
+    title: string;
+    rawText: string;
+    hash: string;
+    publishedAt: Date | null;
+  };
 
+  const preprocessed: PreprocessedItem[] = [];
   for (const item of feed.items) {
     const itemUrl = item.link ? normalizeUrl(item.link) : null;
     const title = item.title?.trim();
-
-    if (!itemUrl || !title) {
-      continue;
-    }
-
+    if (!itemUrl || !title) continue;
     const rawText = stripHtml(
       [item.content, item.contentSnippet, item.summary, item.title].filter(Boolean).join("\n")
     );
     const hash = contentHash(`${title}\n${rawText}`);
     const publishedAt = parseDate(item.isoDate ?? item.pubDate);
+    preprocessed.push({ item, itemUrl, title, rawText, hash, publishedAt });
+  }
 
-    const existingArticle = await prisma.rawArticle.findFirst({
-      where: {
-        OR: [{ url: itemUrl }, { contentHash: hash }]
-      },
-      select: { id: true }
-    });
+  if (preprocessed.length === 0) {
+    return { sourceId, createdArticles: 0, duplicateArticles: 0, candidateEvents: 0 };
+  }
 
-    if (existingArticle) {
+  // Batch dedup check: one query for all article URLs + hashes in this feed
+  const existingArticleMatchers = await prisma.rawArticle.findMany({
+    where: {
+      OR: [
+        { url: { in: preprocessed.map((i) => i.itemUrl) } },
+        { contentHash: { in: preprocessed.map((i) => i.hash) } }
+      ]
+    },
+    select: { url: true, contentHash: true }
+  });
+  const seenUrls = new Set(existingArticleMatchers.map((a) => a.url));
+  const seenHashes = new Set(existingArticleMatchers.map((a) => a.contentHash));
+
+  // Pre-load recent events for in-memory event dedup (avoids N+1 per candidate)
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1_000);
+  const recentEvents = await prisma.riskEvent.findMany({
+    where: { createdAt: { gte: fiveDaysAgo } },
+    orderBy: { createdAt: "desc" }
+  });
+
+  let createdArticles = 0;
+  let duplicateArticles = 0;
+  let candidateEvents = 0;
+
+  for (const { item, itemUrl, title, rawText, hash, publishedAt } of preprocessed) {
+    // Article-level dedup (O(1) in-memory lookup)
+    if (seenUrls.has(itemUrl) || seenHashes.has(hash)) {
       duplicateArticles += 1;
       continue;
     }
+    // Track optimistically so later items in the same batch don't re-create
+    seenUrls.add(itemUrl);
+    seenHashes.add(hash);
 
     const extracted = extractEventFromArticle({ title, rawText });
 
@@ -143,8 +229,9 @@ export async function ingestRssSource(sourceId: string) {
       }
     }
 
-    // Nominatim fallback: resolve lat/lon when dictionary had no match and GeoRSS is absent
+    // Nominatim fallback: rate-limited to respect the 1 req/sec policy
     if (!geoCoords && extracted.country === null && extracted.isLikelyRiskEvent) {
+      await throttleGeocode();
       const geocoded = await geocodeLocation(title);
       if (geocoded) {
         extracted.country = geocoded.country;
@@ -160,12 +247,10 @@ export async function ingestRssSource(sourceId: string) {
       }
     }
 
-    // AI enhancement: improve category, severity, summary via Groq (free tier).
-    // Only runs if GROQ_API_KEY is set and article looks like a risk event.
-    // Skipped for GeoRSS feeds (USGS, GDACS) — coordinates already precise, no need for AI.
-    // Falls back to rules silently on any error.
+    // AI enhancement: guarded by circuit breaker to avoid stalling on Groq outages.
+    // Skipped for GeoRSS feeds — coordinates are already precise.
     if (extracted.isLikelyRiskEvent && !geoCoords) {
-      const aiResult = await extractWithAI(title, rawText);
+      const aiResult = await extractWithAIGuarded(title, rawText);
       if (aiResult) {
         extracted.category = aiResult.category;
         extracted.severity = aiResult.severity;
@@ -179,19 +264,30 @@ export async function ingestRssSource(sourceId: string) {
       }
     }
 
-    const article = await prisma.rawArticle.create({
-      data: {
-        sourceId: source.id,
-        title,
-        url: itemUrl,
-        publishedAt,
-        contentHash: hash,
-        rawText
-      }
-    });
-    createdArticles += 1;
+    // Event dedup via in-memory filter — no DB query per item
+    const duplicateEvent = extracted.isLikelyRiskEvent
+      ? recentEvents
+          .filter(
+            (e) =>
+              e.category === extracted.category &&
+              (extracted.country === null || e.country === extracted.country)
+          )
+          .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e))
+      : undefined;
 
     if (!extracted.isLikelyRiskEvent) {
+      // Non-risk article: create the raw record only (no transaction needed — single write)
+      await prisma.rawArticle.create({
+        data: {
+          sourceId: source.id,
+          title,
+          url: itemUrl,
+          publishedAt,
+          contentHash: hash,
+          rawText
+        }
+      });
+      createdArticles += 1;
       continue;
     }
 
@@ -204,55 +300,69 @@ export async function ingestRssSource(sourceId: string) {
       rawText
     });
 
-    const existingEvents = await prisma.riskEvent.findMany({
-      where: {
-        category: extracted.category,
-        country: extracted.country ?? undefined
-      },
-      take: 25,
-      orderBy: { createdAt: "desc" }
-    });
-
-    const duplicateEvent = existingEvents.find((event) =>
-      isDuplicateCandidate({ ...extracted, publishedAt }, event)
-    );
-
     if (duplicateEvent) {
-      await prisma.rawArticle.update({
-        where: { id: article.id },
-        data: { riskEventId: duplicateEvent.id }
+      // Atomic: create article + link to existing event
+      await prisma.$transaction(async (tx) => {
+        const article = await tx.rawArticle.create({
+          data: {
+            sourceId: source.id,
+            title,
+            url: itemUrl,
+            publishedAt,
+            contentHash: hash,
+            rawText
+          }
+        });
+        await tx.rawArticle.update({
+          where: { id: article.id },
+          data: { riskEventId: duplicateEvent.id }
+        });
+        await tx.riskEvent.update({
+          where: { id: duplicateEvent.id },
+          data: {
+            confidence: Math.min(1, duplicateEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT)
+          }
+        });
       });
-
-      await prisma.riskEvent.update({
-        where: { id: duplicateEvent.id },
-        data: {
-          confidence: Math.min(1, duplicateEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT)
-        }
-      });
+      createdArticles += 1;
       continue;
     }
 
-    await prisma.riskEvent.create({
-      data: {
-        title: extracted.title,
-        summary: extracted.summary,
-        category: extracted.category,
-        country: extracted.country,
-        city: extracted.city,
-        latitude: extracted.latitude,
-        longitude: extracted.longitude,
-        locationConfidence: extracted.locationConfidence,
-        severity: scored.severity,
-        confidence: scored.confidence,
-        status: scored.status,
-        signals: [...extracted.signals, ...scored.signals],
-        sourceUrl: itemUrl,
-        occurredAt: publishedAt ?? undefined,
-        rawArticles: {
-          connect: { id: article.id }
+    // Atomic: create article + new event together so a crash between them leaves no orphan
+    const newEvent = await prisma.$transaction(async (tx) => {
+      const article = await tx.rawArticle.create({
+        data: {
+          sourceId: source.id,
+          title,
+          url: itemUrl,
+          publishedAt,
+          contentHash: hash,
+          rawText
         }
-      }
+      });
+      return tx.riskEvent.create({
+        data: {
+          title: extracted.title,
+          summary: extracted.summary,
+          category: extracted.category,
+          country: extracted.country,
+          city: extracted.city,
+          latitude: extracted.latitude,
+          longitude: extracted.longitude,
+          locationConfidence: extracted.locationConfidence,
+          severity: scored.severity,
+          confidence: scored.confidence,
+          status: scored.status,
+          signals: [...extracted.signals, ...scored.signals],
+          sourceUrl: itemUrl,
+          occurredAt: publishedAt ?? undefined,
+          rawArticles: { connect: { id: article.id } }
+        }
+      });
     });
+
+    recentEvents.push(newEvent); // Keep in-memory cache current for the rest of this batch
+    createdArticles += 1;
     candidateEvents += 1;
   }
 

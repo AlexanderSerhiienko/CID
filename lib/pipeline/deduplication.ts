@@ -2,7 +2,11 @@ import { EventCategory, RiskEvent } from "@prisma/client";
 import { jaccardSimilarity } from "@/lib/pipeline/similarity";
 
 const DATE_WINDOW_DAYS = 5;
-const SIMILARITY_THRESHOLD = 0.2;
+// Raised from 0.2 → 0.3 to reduce false merges between different events in the same country.
+// 0.2 was too permissive: "earthquake Japan" vs "flood Japan" share ~0.33 tokens (1 of 3)
+// and could be incorrectly merged. 0.3 requires more meaningful token overlap.
+// Real-world different-event pairs (e.g. 8-word titles sharing only country) land around 0.1.
+const SIMILARITY_THRESHOLD = 0.3;
 
 export function isDuplicateCandidate(
   candidate: {
