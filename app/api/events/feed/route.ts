@@ -1,11 +1,15 @@
 /**
- * GET /api/events/feed.xml
+ * GET /api/events/feed  (also reachable as /api/events/feed.xml via next.config rewrite)
  *
  * Standard RSS 2.0 feed of the 50 most recent published risk events.
  * Supports optional ?category= filter.
  *
  * No auth required — publicly readable.
  * Cache-Control: 1 hour (matches daily ingestion cadence, generous margin).
+ *
+ * Note: Next.js App Router does not support dots in route segment directory names,
+ * so the canonical path is /api/events/feed. A rewrite in next.config.ts maps
+ * /api/events/feed.xml to this handler for feed reader compatibility.
  */
 import { EventCategory, EventStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
@@ -99,7 +103,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     <description>${escapeXml(feedDescription)}</description>
     <language>en-us</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
-    <atom:link href="${BASE_URL}/api/events/feed.xml${parsedCategory ? `?category=${parsedCategory}` : ""}" rel="self" type="application/rss+xml"/>
+    <atom:link href="${BASE_URL}/api/events/feed${parsedCategory ? `?category=${parsedCategory}` : ""}" rel="self" type="application/rss+xml"/>
 ${items}
   </channel>
 </rss>`;
