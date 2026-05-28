@@ -4,6 +4,7 @@ import { contentHash } from "@/lib/pipeline/hash";
 import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
+import { geocodeLocation } from "@/lib/pipeline/geocoder";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
@@ -138,6 +139,23 @@ export async function ingestRssSource(sourceId: string) {
           weight: GEORSS_LOCATION_CONFIDENCE
         };
         extracted.signals.push(geoSignal);
+      }
+    }
+
+    // Nominatim fallback: resolve lat/lon when dictionary had no match and GeoRSS is absent
+    if (!geoCoords && extracted.country === null && extracted.isLikelyRiskEvent) {
+      const geocoded = await geocodeLocation(title);
+      if (geocoded) {
+        extracted.country = geocoded.country;
+        extracted.latitude = geocoded.lat;
+        extracted.longitude = geocoded.lon;
+        extracted.locationConfidence = Math.max(extracted.locationConfidence, geocoded.confidence);
+        extracted.signals.push({
+          kind: "location",
+          label: "location:nominatim",
+          detail: `Geocoded via Nominatim: ${geocoded.country} (${geocoded.lat.toFixed(4)}, ${geocoded.lon.toFixed(4)})`,
+          weight: geocoded.confidence
+        });
       }
     }
 
