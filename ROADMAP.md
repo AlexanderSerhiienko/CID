@@ -5,34 +5,33 @@ Work on them in order — each builds on the previous.
 
 ---
 
-## 1. Ollama Extraction
+## 1. AI Extraction
 
-**What:** Replace the stub in the pipeline with a real optional AI extraction step using local Ollama.
+**What:** Optionally enhance pipeline extraction with Groq API (free tier, llama3) — improves category, severity, and summary quality over pure keyword rules.
 
-**Why:** Right now the pipeline is 100% deterministic rules. Ollama makes AI an actual part of the product runtime, not just a dev tool.
+**Why:** Right now the pipeline is 100% deterministic rules. Groq makes AI an actual part of the product runtime, not just a dev tool. Runs on the free tier — no cost, no infra required.
 
-**Architecture (see ADR 002):**
+**Architecture:**
 ```
 rawText
   → deterministic rules (always runs)
-  → optional Ollama call (if available)
+  → optional Groq call (if GROQ_API_KEY is set)
   → Zod schema validation
-  → fallback to rules if invalid or timeout
+  → fallback to rules if invalid, timeout, or key missing
   → RiskEvent candidate
 ```
 
-**Where to start:**
-- `lib/pipeline/extraction.ts` — add `extractWithOllama()` alongside the existing `extractWithRules()`
-- Gate it with `OLLAMA_ENABLED=true` env var and a timeout (default: disabled)
-- Validate output with a Zod schema before using it — never trust raw LLM output
-- Add `OLLAMA_URL` to `.env.example`
-- Write tests: Ollama unavailable → falls back to rules, Ollama returns invalid JSON → falls back to rules
+**Implementation:**
+- `lib/pipeline/ai-extraction.ts` — `extractWithAI()` calls Groq, validates with Zod
+- `lib/pipeline/rss.ts` — applies AI result after GeoRSS + Nominatim, before DB write
+- Gate: `GROQ_API_KEY` env var (absent → skip silently)
+- 8s timeout, falls back to rules on any error
 
 **Acceptance criteria:**
-- [ ] App works identically with `OLLAMA_ENABLED=false` (default)
-- [ ] Ollama output passes Zod validation before touching the DB
-- [ ] Timeout is enforced (suggested: 5s)
-- [ ] Fallback to rules is tested
+- [x] App works identically without `GROQ_API_KEY` (default)
+- [x] Groq output passes Zod validation before touching the DB
+- [x] Timeout is enforced (8s)
+- [x] Fallback to rules is tested (7 unit tests in `ai-extraction.test.ts`)
 
 ---
 

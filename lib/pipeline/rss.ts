@@ -5,6 +5,7 @@ import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/ext
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { geocodeLocation } from "@/lib/pipeline/geocoder";
+import { extractWithAI, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
@@ -155,6 +156,24 @@ export async function ingestRssSource(sourceId: string) {
           label: "location:nominatim",
           detail: `Geocoded via Nominatim: ${geocoded.country} (${geocoded.lat.toFixed(4)}, ${geocoded.lon.toFixed(4)})`,
           weight: geocoded.confidence
+        });
+      }
+    }
+
+    // AI enhancement: improve category, severity, summary via Groq (free tier).
+    // Only runs if GROQ_API_KEY is set and article looks like a risk event.
+    // Falls back to rules silently on any error.
+    if (extracted.isLikelyRiskEvent) {
+      const aiResult = await extractWithAI(title, rawText);
+      if (aiResult) {
+        extracted.category = aiResult.category;
+        extracted.severity = aiResult.severity;
+        extracted.summary = aiResult.summary;
+        extracted.signals.push({
+          kind: "category",
+          label: "ai:groq_extraction",
+          detail: `Category and severity refined by Groq (${GROQ_MODEL}).`,
+          weight: 0.1
         });
       }
     }
