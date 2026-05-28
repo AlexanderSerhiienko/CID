@@ -162,8 +162,9 @@ export async function ingestRssSource(sourceId: string) {
 
     // AI enhancement: improve category, severity, summary via Groq (free tier).
     // Only runs if GROQ_API_KEY is set and article looks like a risk event.
+    // Skipped for GeoRSS feeds (USGS, GDACS) — coordinates already precise, no need for AI.
     // Falls back to rules silently on any error.
-    if (extracted.isLikelyRiskEvent) {
+    if (extracted.isLikelyRiskEvent && !geoCoords) {
       const aiResult = await extractWithAI(title, rawText);
       if (aiResult) {
         extracted.category = aiResult.category;
