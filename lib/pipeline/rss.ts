@@ -1,20 +1,66 @@
 import Parser from "rss-parser";
 import { prisma } from "@/lib/db";
 import { contentHash } from "@/lib/pipeline/hash";
-import { extractEventFromArticle } from "@/lib/pipeline/extraction";
+import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
+const GEORSS_LOCATION_CONFIDENCE = 0.9;
 
-const parser = new Parser({
+// Custom fields for GeoRSS (used by USGS Atom feed and others)
+type GeoRssItem = {
+  "georss:point"?: string;
+  "geo:lat"?: string;
+  "geo:long"?: string;
+};
+
+const parser = new Parser<Record<string, unknown>, GeoRssItem>({
   timeout: 10_000,
   headers: {
-    Accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+    Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
     "User-Agent": "CrisisIntelligenceDashboard/0.1 (+local-dev)"
+  },
+  customFields: {
+    item: [
+      ["georss:point", "georss:point"],
+      ["geo:lat", "geo:lat"],
+      ["geo:long", "geo:long"]
+    ]
   }
 });
+
+/**
+ * Extract lat/lon from GeoRSS fields present on an RSS/Atom item.
+ * Supports `georss:point` ("lat lon") and `geo:lat` / `geo:long` pair.
+ * Returns null if no valid coordinates are found.
+ */
+export function parseGeoRssCoords(item: GeoRssItem): { lat: number; lon: number } | null {
+  const point = item["georss:point"];
+  if (point) {
+    const parts = point.trim().split(/\s+/);
+    if (parts.length === 2) {
+      const lat = parseFloat(parts[0]);
+      const lon = parseFloat(parts[1]);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        return { lat, lon };
+      }
+    }
+  }
+
+  const lat = item["geo:lat"];
+  const lon = item["geo:long"];
+  if (lat && lon) {
+    const parsedLat = parseFloat(lat);
+    const parsedLon = parseFloat(lon);
+    if (Number.isFinite(parsedLat) && Number.isFinite(parsedLon)) {
+      return { lat: parsedLat, lon: parsedLon };
+    }
+  }
+
+  return null;
+}
 
 function parseDate(value: string | undefined): Date | null {
   if (!value) {
@@ -66,6 +112,23 @@ export async function ingestRssSource(sourceId: string) {
     }
 
     const extracted = extractEventFromArticle({ title, rawText });
+
+    // Override location with GeoRSS coordinates when present — more accurate than text extraction
+    const geoCoords = parseGeoRssCoords(item);
+    if (geoCoords) {
+      extracted.latitude = geoCoords.lat;
+      extracted.longitude = geoCoords.lon;
+      if (geoCoords.lat !== 0 || geoCoords.lon !== 0) {
+        extracted.locationConfidence = Math.max(extracted.locationConfidence, GEORSS_LOCATION_CONFIDENCE);
+        const geoSignal: PipelineSignal = {
+          kind: "location",
+          label: "location:georss",
+          detail: `Coordinates from GeoRSS feed: ${geoCoords.lat.toFixed(4)}, ${geoCoords.lon.toFixed(4)}`,
+          weight: GEORSS_LOCATION_CONFIDENCE
+        };
+        extracted.signals.push(geoSignal);
+      }
+    }
 
     const article = await prisma.rawArticle.create({
       data: {
