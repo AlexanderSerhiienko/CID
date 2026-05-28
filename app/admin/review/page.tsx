@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { EventStatus, Prisma } from "@prisma/client";
+import { EventStatus, Prisma, SourceType } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { ReviewActions } from "@/components/review-actions";
+import { BulkApproveButton } from "@/components/bulk-approve-button";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db";
 import { rankMergeSuggestions } from "@/lib/review/merge-suggestions";
@@ -19,7 +20,7 @@ export default async function ReviewPage({
   const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10));
   const skip = (page - 1) * PAGE_SIZE;
 
-  const [events, total, mergeTargets] = await Promise.all([
+  const [events, total, officialCount, mergeTargets] = await Promise.all([
     prisma.riskEvent.findMany({
       where: { status: EventStatus.NEEDS_REVIEW },
       orderBy: { createdAt: "asc" },
@@ -32,6 +33,15 @@ export default async function ReviewPage({
       }
     }),
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW } }),
+    // Count NEEDS_REVIEW events that came from at least one OFFICIAL_FEED source
+    prisma.riskEvent.count({
+      where: {
+        status: EventStatus.NEEDS_REVIEW,
+        rawArticles: {
+          some: { source: { type: SourceType.OFFICIAL_FEED } }
+        }
+      }
+    }),
     prisma.riskEvent.findMany({
       where: { status: { not: EventStatus.REJECTED } },
       orderBy: { updatedAt: "desc" },
@@ -51,17 +61,18 @@ export default async function ReviewPage({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Review Queue</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Uncertain extracted events wait here before publication.
+            {total > 0 && (
+              <> {total} event{total !== 1 ? "s" : ""} awaiting review.</>
+            )}
           </p>
         </div>
-        {total > 0 && (
-          <span className="text-sm text-muted-foreground">
-            {total} event{total !== 1 ? "s" : ""} awaiting review
-          </span>
+        {officialCount > 0 && (
+          <BulkApproveButton pendingCount={officialCount} />
         )}
       </div>
 

@@ -1,12 +1,18 @@
-import { EventCategory, EventStatus, Severity, Source } from "@prisma/client";
+import { EventCategory, EventStatus, Severity, Source, SourceType } from "@prisma/client";
 import { PipelineSignal } from "@/lib/pipeline/extraction";
 import { clamp } from "@/lib/utils";
 
 const TRUST_SCORE_WEIGHT = 0.25;
 const CONFIRMED_CONFIDENCE_BOOST = 0.15;
 const UNCERTAIN_CONFIDENCE_PENALTY = 0.1;
+
+// Standard auto-publish threshold (non-official sources)
 const AUTO_PUBLISH_CONFIDENCE_THRESHOLD = 0.8;
 const AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD = 0.6;
+
+// Relaxed thresholds for OFFICIAL_FEED sources (WHO, USGS, CDC, GDACS, etc.)
+// These sources have high trust scores and are generally reliable without human review.
+const OFFICIAL_FEED_CONFIDENCE_THRESHOLD = 0.6;
 
 const HIGH_SEVERITY_ESCALATION_TERMS = ["death", "deaths", "hospitalized", "evacuation", "critical infrastructure"];
 const CRITICAL_SEVERITY_ESCALATION_TERMS = ["mass casualty", "catastrophic", "state of emergency"];
@@ -16,7 +22,7 @@ export function scoreCandidate(input: {
   severity: Severity;
   confidence: number;
   locationConfidence: number;
-  source: Pick<Source, "trustScore">;
+  source: Pick<Source, "trustScore"> & { type?: Source["type"] };
   rawText: string;
 }) {
   const lower = input.rawText.toLowerCase();
@@ -71,17 +77,35 @@ export function scoreCandidate(input: {
     });
   }
 
-  const canAutoPublish =
+  const isOfficialFeed = input.source.type === SourceType.OFFICIAL_FEED;
+
+  // OFFICIAL_FEED sources auto-publish at a lower threshold:
+  // confidence >= 0.6, severity >= MEDIUM, known category.
+  // These are curated, high-trust feeds (WHO, USGS, CDC, GDACS) that rarely produce false positives.
+  const canAutoPublishAsOfficial =
+    isOfficialFeed &&
+    confidence >= OFFICIAL_FEED_CONFIDENCE_THRESHOLD &&
+    input.category !== EventCategory.UNKNOWN &&
+    (severity === Severity.MEDIUM || severity === Severity.HIGH || severity === Severity.CRITICAL);
+
+  // Standard threshold: high confidence + location resolved + high severity.
+  const canAutoPublishStandard =
+    !isOfficialFeed &&
     confidence >= AUTO_PUBLISH_CONFIDENCE_THRESHOLD &&
     input.locationConfidence >= AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD &&
     input.category !== EventCategory.UNKNOWN &&
     (severity === Severity.HIGH || severity === Severity.CRITICAL);
 
+  const canAutoPublish = canAutoPublishAsOfficial || canAutoPublishStandard;
+
   if (canAutoPublish) {
+    const reason = isOfficialFeed
+      ? "Official-feed event at MEDIUM+ severity auto-published without manual review."
+      : "High-confidence, high-severity located event can be published without manual review.";
     signals.push({
       kind: "confidence",
       label: "status:auto_published",
-      detail: "High-confidence, high-severity located event can be published without manual review."
+      detail: reason
     });
   }
 
