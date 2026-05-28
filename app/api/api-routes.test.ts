@@ -131,7 +131,7 @@ describe("protected API route contracts", () => {
       )
     );
 
-    await expect(response.json()).resolves.toEqual({ updated: 1 });
+    await expect(response.json()).resolves.toEqual({ id: "event-1", status: EventStatus.PUBLISHED });
     expect(response.status).toBe(200);
     expect(mocks.prisma.riskEvent.updateMany).toHaveBeenCalledWith({
       where: { id: "event-1", status: EventStatus.NEEDS_REVIEW },

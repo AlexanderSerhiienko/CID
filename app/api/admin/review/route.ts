@@ -98,5 +98,5 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ updated: event.count });
+  return NextResponse.json({ id: payload.data.id, status: newStatus });
 }

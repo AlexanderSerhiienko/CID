@@ -6,8 +6,9 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 
 // Public API: only PUBLISHED events are accessible without auth.
-// Whitelist prevents callers from leaking DRAFT or NEEDS_REVIEW events
-// by passing ?status=DRAFT in the query string.
+// This is intentionally a whitelist (not just an inequality check) so that
+// any future status values are denied by default rather than accidentally exposed.
+// Never add DRAFT or NEEDS_REVIEW here — they contain unreviewed content.
 const ALLOWED_PUBLIC_STATUSES: EventStatus[] = [EventStatus.PUBLISHED];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
