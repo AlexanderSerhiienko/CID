@@ -1,4 +1,5 @@
 import Parser from "rss-parser";
+import { EventCategory } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { contentHash } from "@/lib/pipeline/hash";
 import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
@@ -11,11 +12,15 @@ import { normalizeUrl, stripHtml } from "@/lib/utils";
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
 const GEORSS_LOCATION_CONFIDENCE = 0.9;
 
-// Nominatim rate limiting: max 1 req/sec per their usage policy
+// Nominatim rate limiting: max 1 req/sec per their usage policy.
+// Module-level so the limit is shared across all concurrent ingestRssSource
+// calls (parallel sources in the sync ingest route all respect the same gap).
 const GEOCODE_MIN_INTERVAL_MS = 1_100;
 let lastGeocodeMs = 0;
 
-// Groq circuit breaker: open after N consecutive null returns, reset after 5 minutes
+// Groq circuit breaker: open after N consecutive null returns, reset after 5 minutes.
+// Module-level so a Groq outage trips the circuit globally — if Groq is down
+// for one source it's down for all of them, and stalling per-article is wasteful.
 const GROQ_CIRCUIT_THRESHOLD = 3;
 const GROQ_CIRCUIT_RESET_MS = 5 * 60 * 1_000;
 let groqConsecutiveNulls = 0;
@@ -173,6 +178,11 @@ export async function ingestRssSource(sourceId: string) {
   }
 
   if (preprocessed.length === 0) {
+    // Still mark the source as successfully checked even when the feed is empty.
+    await prisma.source.update({
+      where: { id: sourceId },
+      data: { lastIngestedAt: new Date(), lastError: null }
+    });
     return { sourceId, createdArticles: 0, duplicateArticles: 0, candidateEvents: 0 };
   }
 
@@ -189,11 +199,34 @@ export async function ingestRssSource(sourceId: string) {
   const seenUrls = new Set(existingArticleMatchers.map((a) => a.url));
   const seenHashes = new Set(existingArticleMatchers.map((a) => a.contentHash));
 
-  // Pre-load recent events for in-memory event dedup (avoids N+1 per candidate)
+  // Pre-load recent events for in-memory event dedup (avoids N+1 per candidate).
+  // Only fetch the fields needed by isDuplicateCandidate + the confidence field
+  // used for the duplicate-found update. Omitting signals, sourceUrl, etc. keeps
+  // the payload small when there are hundreds of events in the 5-day window.
   const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1_000);
-  const recentEvents = await prisma.riskEvent.findMany({
+  type DedupEvent = {
+    id: string;
+    title: string;
+    summary: string;
+    category: EventCategory;
+    country: string | null;
+    city: string | null;
+    confidence: number;
+    createdAt: Date;
+  };
+  const recentEvents: DedupEvent[] = await prisma.riskEvent.findMany({
     where: { createdAt: { gte: fiveDaysAgo } },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      summary: true,
+      category: true,
+      country: true,
+      city: true,
+      confidence: true,
+      createdAt: true
+    }
   });
 
   let createdArticles = 0;
@@ -291,15 +324,6 @@ export async function ingestRssSource(sourceId: string) {
       continue;
     }
 
-    const scored = scoreCandidate({
-      category: extracted.category,
-      severity: extracted.severity,
-      confidence: extracted.confidence,
-      locationConfidence: extracted.locationConfidence,
-      source,
-      rawText
-    });
-
     if (duplicateEvent) {
       // Atomic: create article + link to existing event
       await prisma.$transaction(async (tx) => {
@@ -327,6 +351,16 @@ export async function ingestRssSource(sourceId: string) {
       createdArticles += 1;
       continue;
     }
+
+    // Score only when actually creating a new event — not needed for the duplicate path above
+    const scored = scoreCandidate({
+      category: extracted.category,
+      severity: extracted.severity,
+      confidence: extracted.confidence,
+      locationConfidence: extracted.locationConfidence,
+      source,
+      rawText
+    });
 
     // Atomic: create article + new event together so a crash between them leaves no orphan
     const newEvent = await prisma.$transaction(async (tx) => {
@@ -361,7 +395,17 @@ export async function ingestRssSource(sourceId: string) {
       });
     });
 
-    recentEvents.push(newEvent); // Keep in-memory cache current for the rest of this batch
+    // Keep dedup cache current so later items in this batch can match the new event
+    recentEvents.push({
+      id: newEvent.id,
+      title: newEvent.title,
+      summary: newEvent.summary,
+      category: newEvent.category,
+      country: newEvent.country,
+      city: newEvent.city,
+      confidence: newEvent.confidence,
+      createdAt: newEvent.createdAt
+    });
     createdArticles += 1;
     candidateEvents += 1;
   }
