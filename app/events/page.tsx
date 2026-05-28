@@ -2,6 +2,7 @@ import Link from "next/link";
 import { EventCategory, EventStatus, Severity } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db";
+import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function EventsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const now = new Date();
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
   const status = typeof params.status === "string" ? params.status : EventStatus.PUBLISHED;
@@ -160,12 +162,13 @@ export default async function EventsPage({
               <th className="px-4 py-3">Severity</th>
               <th className="px-4 py-3">Confidence</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Date</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {events.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   No events match the current filters.
                 </td>
               </tr>
@@ -190,6 +193,9 @@ export default async function EventsPage({
                     <Badge tone={event.status === EventStatus.PUBLISHED ? "green" : "blue"}>
                       {event.status}
                     </Badge>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    {formatDate(event.createdAt, now)}
                   </td>
                 </tr>
               ))
