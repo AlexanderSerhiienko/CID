@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "Reviewed global risk events from RSS and open-data sources",
   alternates: {
     types: {
-      "application/rss+xml": "/api/events/feed.xml"
+      "application/rss+xml": "/api/events/feed"
     }
   }
 };
@@ -51,7 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 text-xs text-muted-foreground">
               <span>Crisis Intelligence Dashboard</span>
               <a
-                href="/api/events/feed.xml"
+                href="/api/events/feed"
                 className="flex items-center gap-1.5 hover:text-foreground"
                 title="Subscribe to RSS feed of published events"
               >
