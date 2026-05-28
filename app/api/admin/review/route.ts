@@ -24,7 +24,11 @@ const reviewSchema = z.object({
     .optional()
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Review queue is an internal tool — require admin auth.
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   const events = await prisma.riskEvent.findMany({
     where: { status: EventStatus.NEEDS_REVIEW },
     orderBy: { createdAt: "asc" },
@@ -45,9 +49,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   const unauthorized = requireAdmin(request);
-  if (unauthorized) {
-    return unauthorized;
-  }
+  if (unauthorized) return unauthorized;
 
   const payload = reviewSchema.safeParse(await request.json());
 
@@ -76,16 +78,25 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  const event = await prisma.riskEvent.update({
-    where: { id: payload.data.id },
+  const newStatus =
+    payload.data.action === "approve" ? EventStatus.PUBLISHED : EventStatus.REJECTED;
+
+  // Enforce state machine: only NEEDS_REVIEW events can be approved or rejected.
+  // Prevents re-publishing REJECTED events or overwriting PUBLISHED ones.
+  const event = await prisma.riskEvent.updateMany({
+    where: { id: payload.data.id, status: EventStatus.NEEDS_REVIEW },
     data: {
       ...payload.data.patch,
-      status:
-        payload.data.action === "approve"
-          ? EventStatus.PUBLISHED
-          : EventStatus.REJECTED
+      status: newStatus
     }
   });
 
-  return NextResponse.json({ event });
+  if (event.count === 0) {
+    return NextResponse.json(
+      { error: "Event not found or not in NEEDS_REVIEW state." },
+      { status: 409 }
+    );
+  }
+
+  return NextResponse.json({ updated: event.count });
 }
