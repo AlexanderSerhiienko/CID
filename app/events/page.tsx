@@ -194,8 +194,11 @@ export default async function EventsPage({
                       {event.status}
                     </Badge>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                    {formatDate(event.createdAt, now)}
+                  <td
+                    className="whitespace-nowrap px-4 py-3 text-muted-foreground"
+                    title={event.occurredAt ? `Occurred: ${event.occurredAt.toISOString()}` : `First seen: ${event.createdAt.toISOString()}`}
+                  >
+                    {formatDate(event.occurredAt ?? event.createdAt, now)}
                   </td>
                 </tr>
               ))

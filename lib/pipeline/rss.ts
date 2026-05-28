@@ -247,6 +247,7 @@ export async function ingestRssSource(sourceId: string) {
         status: scored.status,
         signals: [...extracted.signals, ...scored.signals],
         sourceUrl: itemUrl,
+        occurredAt: publishedAt ?? undefined,
         rawArticles: {
           connect: { id: article.id }
         }

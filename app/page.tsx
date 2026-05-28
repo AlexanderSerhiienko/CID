@@ -8,28 +8,62 @@ import { formatRelativeTime, hoursUntilNextDailyRun } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+const WINDOW_OPTIONS = [
+  { label: "Last 7 days", value: "7d", days: 7 },
+  { label: "Last 30 days", value: "30d", days: 30 },
+  { label: "All time", value: "all", days: null }
+] as const;
+
+type WindowValue = (typeof WINDOW_OPTIONS)[number]["value"];
+
 function severityTone(severity: Severity) {
-  if (severity === Severity.CRITICAL || severity === Severity.HIGH) {
-    return "red";
-  }
-  if (severity === Severity.MEDIUM) {
-    return "yellow";
-  }
-  return "green";
+  if (severity === Severity.CRITICAL || severity === Severity.HIGH) return "red" as const;
+  if (severity === Severity.MEDIUM) return "yellow" as const;
+  return "green" as const;
 }
 
-export default async function DashboardPage() {
+function cutoffDate(days: number | null): Date | null {
+  if (days === null) return null;
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const now = new Date();
+  const params = await searchParams;
+  const windowParam = typeof params.window === "string" ? params.window : "30d";
+  const windowOption =
+    WINDOW_OPTIONS.find((w) => w.value === windowParam) ?? WINDOW_OPTIONS[1];
+
+  const cutoff = cutoffDate(windowOption.days);
+
+  // Filter by occurredAt when available; fall back to createdAt for legacy events (occurredAt null).
+  const timeFilter = cutoff
+    ? {
+        OR: [
+          { occurredAt: { gte: cutoff } },
+          { occurredAt: null, createdAt: { gte: cutoff } }
+        ]
+      }
+    : {};
+
+  const baseWhere = { status: EventStatus.PUBLISHED, ...timeFilter };
 
   const [mapEvents, latestEvents, publishedCount, reviewCount, sourceCount, lastIngested] =
     await Promise.all([
       prisma.riskEvent.findMany({
-        where: { status: EventStatus.PUBLISHED },
+        where: baseWhere,
         orderBy: { createdAt: "desc" },
-        take: 250
+        take: 500
       }),
       prisma.riskEvent.findMany({
-        where: { status: EventStatus.PUBLISHED },
+        where: baseWhere,
         orderBy: { createdAt: "desc" },
         take: 20
       }),
@@ -81,12 +115,35 @@ export default async function DashboardPage() {
         </div>
       </section>
 
+      {/* Time window filter */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground">Showing:</span>
+        {WINDOW_OPTIONS.map((opt) => (
+          <Link
+            key={opt.value}
+            href={opt.value === "30d" ? "/" : `/?window=${opt.value}`}
+            className={
+              windowOption.value === opt.value
+                ? "rounded-md border border-border bg-card px-3 py-1.5 font-medium text-foreground shadow-sm"
+                : "rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted"
+            }
+          >
+            {opt.label}
+          </Link>
+        ))}
+        {mapEvents.length > 0 && (
+          <span className="ml-2 text-muted-foreground">
+            · {mapEvents.length} event{mapEvents.length === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+
       {latestEvents.length > 0 ? (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
           <EventMapClient events={mapEvents} />
           <section className="max-h-[460px] overflow-hidden rounded-md border border-border bg-card">
             <div className="border-b border-border px-4 py-3">
-              <h2 className="font-semibold">Latest published events</h2>
+              <h2 className="font-semibold">Latest events · {windowOption.label.toLowerCase()}</h2>
             </div>
             <div className="max-h-[408px] divide-y divide-border overflow-y-auto">
               {latestEvents.map((event) => (
@@ -103,7 +160,7 @@ export default async function DashboardPage() {
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{formatRelativeTime(event.createdAt, now)}</span>
+                    <span>{formatRelativeTime(event.occurredAt ?? event.createdAt, now)}</span>
                     <span>·</span>
                     <span>
                       {[event.city, event.country].filter(Boolean).join(", ") || "Location pending"}
@@ -116,8 +173,16 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <EmptyState
-          title="No published events yet"
-          detail="Seed sources, run RSS ingestion, then approve candidate events from the review queue."
+          title={
+            windowOption.value === "all"
+              ? "No published events yet"
+              : `No events in the ${windowOption.label.toLowerCase()}`
+          }
+          detail={
+            windowOption.value === "all"
+              ? "Seed sources, run RSS ingestion, then approve candidate events from the review queue."
+              : "Try expanding the time window to see older events."
+          }
         />
       )}
     </div>
