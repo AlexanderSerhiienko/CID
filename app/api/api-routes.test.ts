@@ -143,6 +143,26 @@ describe("protected API route contracts", () => {
     });
   });
 
+  it("returns 409 when approving a non-existent or already-processed event", async () => {
+    // updateMany returns count: 0 when no row matches the where clause.
+    // This handles both "event not found" and "event not in NEEDS_REVIEW" without
+    // a separate lookup — and avoids the Prisma P2025 throw that would produce 500.
+    mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await reviewPatch(
+      jsonRequest(
+        "/api/admin/review",
+        { id: "does-not-exist", action: "approve" },
+        { token: "dev-admin-token" }
+      )
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: "Event not found or not in NEEDS_REVIEW state."
+    });
+    expect(response.status).toBe(409);
+  });
+
   it("rejects merge review action without target event id", async () => {
     const response = await reviewPatch(
       jsonRequest(
