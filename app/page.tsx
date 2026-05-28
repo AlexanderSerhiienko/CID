@@ -14,8 +14,6 @@ const WINDOW_OPTIONS = [
   { label: "All time", value: "all", days: null }
 ] as const;
 
-type WindowValue = (typeof WINDOW_OPTIONS)[number]["value"];
-
 function severityTone(severity: Severity) {
   if (severity === Severity.CRITICAL || severity === Severity.HIGH) return "red" as const;
   if (severity === Severity.MEDIUM) return "yellow" as const;

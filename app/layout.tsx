@@ -50,6 +50,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <footer className="border-t border-border bg-card mt-8">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 text-xs text-muted-foreground">
               <span>Crisis Intelligence Dashboard</span>
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a
                 href="/api/events/feed"
                 className="flex items-center gap-1.5 hover:text-foreground"
