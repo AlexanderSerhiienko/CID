@@ -1,7 +1,7 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import type { Feature, FeatureCollection, Geometry } from "geojson";
+import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
 import type { Layer } from "leaflet";
 import { GeoJSON, MapContainer, TileLayer } from "react-leaflet";
 import { feature } from "topojson-client";
@@ -15,10 +15,57 @@ import {
 
 type CountryFeature = Feature<Geometry, { name?: string }>;
 
-const countryFeatures = feature(
+/**
+ * Normalize a polygon ring so no consecutive longitude jump exceeds 180°.
+ *
+ * Leaflet renders polygons by drawing straight screen-space lines between
+ * consecutive coordinate pairs. When a polygon crosses the antimeridian
+ * (±180°), the raw GeoJSON longitude jumps from e.g. +179° to -179° —
+ * a difference of 358°. Leaflet interprets this as "draw a line across
+ * the entire map width", producing the horizontal stripe artifact visible
+ * with Russia. Offsetting subsequent coordinates by ±360° makes the ring
+ * geometrically continuous so Leaflet renders it correctly.
+ */
+function normalizeRing(ring: Position[]): Position[] {
+  if (ring.length === 0) return ring;
+  const result: Position[] = [ring[0]];
+  for (let i = 1; i < ring.length; i++) {
+    const prevLon = result[i - 1][0];
+    let lon = ring[i][0];
+    const rest = ring[i].slice(1);
+    while (lon - prevLon > 180) lon -= 360;
+    while (prevLon - lon > 180) lon += 360;
+    result.push([lon, ...rest]);
+  }
+  return result;
+}
+
+function normalizeGeometry(geometry: Geometry): Geometry {
+  if (geometry.type === "Polygon") {
+    return { ...geometry, coordinates: geometry.coordinates.map(normalizeRing) };
+  }
+  if (geometry.type === "MultiPolygon") {
+    return {
+      ...geometry,
+      coordinates: geometry.coordinates.map((poly) => poly.map(normalizeRing))
+    };
+  }
+  return geometry;
+}
+
+const rawFeatures = feature(
   countriesTopology as never,
   (countriesTopology as { objects: { countries: unknown } }).objects.countries as never
 ) as unknown as FeatureCollection<Geometry, { name?: string }>;
+
+// Apply antimeridian normalization once at module load — no runtime cost per render.
+const countryFeatures: FeatureCollection<Geometry, { name?: string }> = {
+  ...rawFeatures,
+  features: rawFeatures.features.map((f) => ({
+    ...f,
+    geometry: normalizeGeometry(f.geometry)
+  }))
+};
 
 export function EventMap({ events }: { events: MapRiskEvent[] }) {
   const countries = riskLookup(events);
