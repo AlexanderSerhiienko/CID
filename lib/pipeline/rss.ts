@@ -80,7 +80,18 @@ export async function ingestRssSource(sourceId: string) {
     return { sourceId, createdArticles: 0, duplicateArticles: 0, candidateEvents: 0 };
   }
 
-  const feed = await parser.parseURL(source.url);
+  let feed: Awaited<ReturnType<typeof parser.parseURL>>;
+  try {
+    feed = await parser.parseURL(source.url);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Failed to fetch or parse feed";
+    await prisma.source.update({
+      where: { id: sourceId },
+      data: { lastError: errorMessage }
+    });
+    throw err;
+  }
+
   let createdArticles = 0;
   let duplicateArticles = 0;
   let candidateEvents = 0;
@@ -205,6 +216,11 @@ export async function ingestRssSource(sourceId: string) {
     });
     candidateEvents += 1;
   }
+
+  await prisma.source.update({
+    where: { id: sourceId },
+    data: { lastIngestedAt: new Date(), lastError: null }
+  });
 
   return { sourceId, createdArticles, duplicateArticles, candidateEvents };
 }

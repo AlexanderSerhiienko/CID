@@ -37,6 +37,7 @@ export default async function SourcesPage() {
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Trust</th>
               <th className="px-4 py-3">Articles</th>
+              <th className="px-4 py-3">Last ingested</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Settings</th>
               <th className="px-4 py-3">Action</th>
@@ -45,15 +46,25 @@ export default async function SourcesPage() {
           <tbody className="divide-y divide-border">
             {sources.map((source) => (
               <tr key={source.id}>
-                <td className="max-w-[420px] px-4 py-3">
+                <td className="max-w-[360px] px-4 py-3">
                   <div className="font-medium">{source.name}</div>
                   <a className="text-xs text-primary" href={source.url} target="_blank">
                     {source.url}
                   </a>
+                  {source.lastError && (
+                    <p className="mt-1 truncate text-xs text-red-500" title={source.lastError}>
+                      ⚠ {source.lastError}
+                    </p>
+                  )}
                 </td>
                 <td className="px-4 py-3">{source.type}</td>
                 <td className="px-4 py-3">{Math.round(source.trustScore * 100)}%</td>
                 <td className="px-4 py-3">{source._count.rawArticles}</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {source.lastIngestedAt
+                    ? source.lastIngestedAt.toISOString().slice(0, 16).replace("T", " ")
+                    : "—"}
+                </td>
                 <td className="px-4 py-3">
                   <Badge tone={source.enabled ? "green" : "neutral"}>
                     {source.enabled ? "ENABLED" : "DISABLED"}
