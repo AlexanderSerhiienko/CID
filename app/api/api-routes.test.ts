@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
     source: {
       create: vi.fn(),
       findMany: vi.fn(),
-      update: vi.fn()
+      findUnique: vi.fn(),
+      updateMany: vi.fn()
     },
     riskEvent: {
       updateMany: vi.fn(),
@@ -67,7 +68,8 @@ describe("protected API route contracts", () => {
 
   it("updates a source with validated payload", async () => {
     const source = { id: "source-1", enabled: false, trustScore: 0.7 };
-    mocks.prisma.source.update.mockResolvedValue(source);
+    mocks.prisma.source.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.source.findUnique.mockResolvedValue(source);
 
     const response = await sourcePatch(
       jsonRequest("/api/sources/source-1", { enabled: false, trustScore: 0.7 }, { token: "dev-admin-token" }),
@@ -76,10 +78,22 @@ describe("protected API route contracts", () => {
 
     await expect(response.json()).resolves.toEqual({ source });
     expect(response.status).toBe(200);
-    expect(mocks.prisma.source.update).toHaveBeenCalledWith({
+    expect(mocks.prisma.source.updateMany).toHaveBeenCalledWith({
       where: { id: "source-1" },
       data: { enabled: false, trustScore: 0.7 }
     });
+  });
+
+  it("returns 404 when updating a source that does not exist", async () => {
+    mocks.prisma.source.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await sourcePatch(
+      jsonRequest("/api/sources/unknown", { enabled: false }, { token: "dev-admin-token" }),
+      { params: Promise.resolve({ id: "unknown" }) }
+    );
+
+    await expect(response.json()).resolves.toEqual({ error: "Source not found." });
+    expect(response.status).toBe(404);
   });
 
   it("rejects ingestion without admin token", async () => {
