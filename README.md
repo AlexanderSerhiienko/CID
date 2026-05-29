@@ -104,15 +104,9 @@ Not yet complete:
 
 This project uses AI as part of the software development lifecycle, not as a required production dependency.
 
-The workflow is defined in `CLAUDE.md` and `agents/`:
-- `agents/planner.md` — task decomposition before any code is written
-- `agents/coder.md` — implementation conventions
-- `agents/reviewer.md` — code review checklist
-- `agents/testing.md` — test strategy
-- `agents/refactor.md` — cleanup guidelines
-- `agents/devops.md` — infrastructure and deployment
+The workflow is defined in `CLAUDE.md`.
 
-The application must work without external paid AI APIs. Optional local Ollama extraction may be added for the ingestion pipeline, with deterministic rules as the fallback.
+Groq is used for optional AI extraction in the ingestion pipeline. Deterministic rules always run first and serve as the fallback — the app works without Groq.
 
 See `ROADMAP.md` for the next planned features.
 
@@ -121,7 +115,7 @@ See `ROADMAP.md` for the next planned features.
 Architecture Decision Records are stored in `docs/adr/`.
 
 - [ADR 001: AI-Assisted Engineering Workflow](docs/adr/001-ai-assisted-engineering-workflow.md)
-- [ADR 002: Hybrid Extraction With Rules Before Ollama](docs/adr/002-hybrid-extraction-rules-before-ollama.md)
+- [ADR 002: Hybrid Extraction With Rules Before Groq](docs/adr/002-hybrid-extraction-rules-before-groq.md)
 - [ADR 003: BullMQ For Ingestion Jobs](docs/adr/003-bullmq-for-ingestion-jobs.md)
 - [ADR 004: First Vertical Slice Before Feature Expansion](docs/adr/004-first-vertical-slice-before-feature-expansion.md)
 

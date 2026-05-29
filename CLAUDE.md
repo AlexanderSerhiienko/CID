@@ -2,37 +2,64 @@
 
 ## How to Work on This Project
 
-This is an AI-native project. That means AI is not just used to write code — it follows a structured workflow for every task.
-
 ### For every new feature or task:
 
-**Step 1 — Plan first (always)**
-Before writing any code, read `agents/planner.md` and produce a plan. Output the plan as a numbered list of steps. Do not start implementing until the plan is clear.
+**Step 1 — Plan first**
+For anything larger than a one-line fix, produce a plan before writing code:
+
+```
+## Feature: [name]
+
+### What it does
+[one sentence]
+
+### Layers affected
+- [ ] schema.prisma
+- [ ] lib/pipeline/
+- [ ] app/api/
+- [ ] app/ (UI)
+- [ ] workers/
+- [ ] tests
+
+### Implementation steps
+1. ...
+
+### Tests needed
+- ...
+
+### Risks / edge cases
+- ...
+```
+
+Flag anything that touches deduplication or scoring — these are fragile. Plan migrations as a separate step before implementation.
 
 **Step 2 — Implement**
-Follow `agents/coder.md` conventions. Work step by step through the plan. One concern per commit.
+Work step by step through the plan. One concern per commit.
 
 **Step 3 — Self-review**
-After implementation, read `agents/reviewer.md` and go through the checklist yourself. Fix any blocking issues before considering the task done.
+Before considering done, check these blocking issues:
+- All mutation API routes protected by admin token?
+- All request bodies validated with Zod before touching DB?
+- Multi-step DB writes wrapped in Prisma transactions?
+- External HTTP calls (RSS fetches) have timeouts?
+- No errors silently swallowed — log or rethrow?
+- New `schema.prisma` fields have a migration?
+- No N+1 queries — use `include` or batch fetches?
 
 **Step 4 — Tests**
-Follow `agents/testing.md`. Every non-trivial change to `lib/` needs at least one new test. Run `npm run test` before finishing.
+Every non-trivial change to `lib/` needs at least one new test. Run `npm run test` before finishing.
 
 **Step 5 — Verify**
-Run `npm run typecheck && npm run lint && npm run test`. All must pass.
-
-### For refactoring:
-Read `agents/refactor.md` first. Never mix refactor with feature work.
-
-### For DevOps / infrastructure tasks:
-Read `agents/devops.md` first.
+`npm run typecheck && npm run lint && npm run test` — all must pass.
 
 ### Rules
 - Never skip the planning step for anything larger than a one-line fix
 - Never mark a task done if tests are failing
 - Never add a runtime dependency on an external paid AI API
-- Pipeline changes (lib/pipeline/) always need tests
+- Pipeline changes (`lib/pipeline/`) always need tests
+- Never mix refactor with feature work
 - Never add "Co-Authored-By" lines to commit messages
+- Before opening a PR, run `/code-review`
 
 ---
 
@@ -57,7 +84,7 @@ This is a portfolio project demonstrating fullstack engineering + AI-native deve
 - **Validation:** Zod
 - **Tests:** Vitest
 - **Infrastructure:** Docker Compose, GitHub Actions CI
-- **Optional AI extraction:** Ollama (local, not required)
+- **Optional AI extraction:** Groq (gated with timeout and fallback)
 
 ---
 
@@ -131,7 +158,6 @@ prisma/
   seed.ts               # 10 pre-configured sources
 scripts/                # One-off backfill scripts
 docs/adr/               # Architecture Decision Records
-agents/                 # AI agent role definitions (see below)
 ```
 
 ---
@@ -181,9 +207,23 @@ agents/                 # AI agent role definitions (see below)
 - **Zod validation** at API boundaries — validate request body before touching DB
 - **Prisma transactions** for multi-step writes (merge operations)
 - **Error responses** — always `{ error: string }` JSON with appropriate HTTP status
-- **No AI runtime dependency** — all pipeline logic must work without Ollama
+- **Groq is optional** — all pipeline logic must work without it; deterministic rules are always the fallback
 - **Co-located tests** — `*.test.ts` next to the file being tested, use Vitest
 - **Server components by default** — only add `'use client'` when actually needed
+- **Business logic in `lib/`** — never put logic inside API route handlers
+- **No N+1 queries** — use Prisma `include` or batch with `findMany({ where: { id: { in: [...] } } })`
+- **BullMQ jobs** must have retry logic; external RSS fetches must have a timeout
+
+### Test priorities
+1. Pipeline logic — extraction, scoring, deduplication (pure functions, easy to test)
+2. API route contracts — status codes, admin token enforcement, response shape
+3. Review logic — merge, merge-suggestions
+4. Edge cases to always cover: empty input, `country: null`, ambiguous category → `UNKNOWN`, duplicate merge attempt
+
+### Refactor rules
+- Run tests before and after — if tests break, the refactor is wrong
+- One concern per PR — don't mix refactor with feature work
+- Keep pipeline steps pure — `lib/pipeline/` must not import from `app/`
 
 ---
 
@@ -204,7 +244,7 @@ agents/                 # AI agent role definitions (see below)
 
 See **`ROADMAP.md`** for detailed specs on each of these.
 
-- Ollama extraction (documented in ADR 002, fallback rules exist) — **next priority**
+- Groq extraction (documented in ADR 002, fallback rules exist) — **next priority**
 - MCP integration (GitHub MCP + PostgreSQL MCP + custom CID MCP server) — **next priority**
 - Deployment (Vercel + Supabase) — **next priority**
 - Full geocoder (country-level only, not city coordinates)
@@ -217,11 +257,11 @@ See **`ROADMAP.md`** for detailed specs on each of these.
 
 The application must work without external paid AI APIs.
 
-Optional Ollama extraction flow (not yet implemented):
+Groq extraction flow:
 ```
-rawText → deterministic rules → [optional Ollama] → Zod validation → fallback to rules → RiskEvent
+rawText → deterministic rules → [optional Groq] → Zod validation → fallback to rules → RiskEvent
 ```
-- Ollama must be gated by timeout
+- Groq must be gated by timeout
 - Output must pass schema validation before use
 - Deterministic rules are always the fallback
 
@@ -230,21 +270,9 @@ rawText → deterministic rules → [optional Ollama] → Zod validation → fal
 ## Architecture Decision Records
 
 - `docs/adr/001` — AI-Assisted Engineering Workflow
-- `docs/adr/002` — Hybrid Extraction: Rules Before Ollama
+- `docs/adr/002` — Hybrid Extraction: Rules Before Groq
 - `docs/adr/003` — BullMQ For Ingestion Jobs
 - `docs/adr/004` — First Vertical Slice Before Feature Expansion
-
----
-
-## Agent Roles
-
-See `agents/` directory for role-specific instructions:
-- `agents/planner.md` — task decomposition and feature planning
-- `agents/coder.md` — implementation conventions
-- `agents/reviewer.md` — code review checklist
-- `agents/testing.md` — test strategy and edge cases
-- `agents/refactor.md` — cleanup and optimization
-- `agents/devops.md` — Docker, CI/CD, deployment
 
 ---
 
@@ -254,7 +282,7 @@ See `agents/` directory for role-specific instructions:
 
 | Command | When to use |
 |---------|-------------|
-| `/decompose-issue <N>` | Before starting any non-trivial issue — fetches it and produces a planner.md-format plan |
+| `/decompose-issue <N>` | Before starting any non-trivial issue — fetches it and produces a plan |
 | `/issue-fix` | Picks the next ready-to-fix issue and implements it end-to-end |
 | `/bug-hunt` | Scans codebase for real bugs and files GitHub issues |
 | `/gen-pr-desc` | Generates PR title + body from current branch diff |
