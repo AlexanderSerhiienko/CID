@@ -219,6 +219,7 @@ export async function ingestRssSource(sourceId: string) {
   let duplicateArticles = 0;
   let candidateEvents = 0;
 
+  try {
   for (const { item, itemUrl, title, rawText, hash, publishedAt } of preprocessed) {
     // Article-level dedup (O(1) in-memory lookup)
     if (seenUrls.has(itemUrl) || seenHashes.has(hash)) {
@@ -402,6 +403,17 @@ export async function ingestRssSource(sourceId: string) {
     });
     createdArticles += 1;
     candidateEvents += 1;
+  }
+
+  } catch (err) {
+    // DB/transaction errors inside the article loop are captured here so they
+    // are visible in the admin dashboard via source.lastError, not just in BullMQ logs.
+    const errorMessage = err instanceof Error ? err.message : "Pipeline error during article processing";
+    await prisma.source.update({
+      where: { id: sourceId },
+      data: { lastError: errorMessage }
+    });
+    throw err;
   }
 
   await prisma.source.update({
