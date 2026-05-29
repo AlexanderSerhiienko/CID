@@ -7,7 +7,10 @@ const privateHostPatterns = [
   /^10\./,
   /^192\.168\./,
   /^172\.(1[6-9]|2\d|3[0-1])\./,
-  /^0\.0\.0\.0$/
+  /^0\.0\.0\.0$/,
+  /^\[::1\]$/,       // IPv6 loopback — new URL('http://[::1]/').hostname === '[::1]'
+  /^\[fc00:/i,       // IPv6 unique local (fc00::/7)
+  /^\[fd[0-9a-f]{2}:/i // IPv6 unique local (fd00::/8)
 ];
 
 function isAllowedSourceUrl(value: string) {
