@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { extractEventFromArticle } from "@/lib/pipeline/extraction";
+import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
 
 async function main() {
   const events = await prisma.riskEvent.findMany({
@@ -41,6 +41,13 @@ async function main() {
       continue;
     }
 
+    // Preserve non-location signals (scoring, AI, keywords) from the existing event.
+    // Only replace location signals so scoring/AI signals are not destroyed.
+    const existingSignals = (event.signals as PipelineSignal[]) ?? [];
+    const nonLocationSignals = existingSignals.filter((s) => s.kind !== "location");
+    const newLocationSignals = preferred.signals.filter((s) => s.kind === "location");
+    const mergedSignals = [...nonLocationSignals, ...newLocationSignals];
+
     await prisma.riskEvent.update({
       where: { id: event.id },
       data: {
@@ -49,7 +56,7 @@ async function main() {
         latitude: preferred.latitude,
         longitude: preferred.longitude,
         locationConfidence: preferred.locationConfidence,
-        signals: preferred.signals
+        signals: mergedSignals
       }
     });
     updated += 1;
