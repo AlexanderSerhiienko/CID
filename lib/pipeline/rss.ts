@@ -12,12 +12,6 @@ import { normalizeUrl, stripHtml } from "@/lib/utils";
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
 const GEORSS_LOCATION_CONFIDENCE = 0.9;
 
-// Nominatim rate limiting: max 1 req/sec per their usage policy.
-// Module-level so the limit is shared across all concurrent ingestRssSource
-// calls (parallel sources in the sync ingest route all respect the same gap).
-const GEOCODE_MIN_INTERVAL_MS = 1_100;
-let lastGeocodeMs = 0;
-
 // Groq circuit breaker: open after N consecutive null returns, reset after 5 minutes.
 // Module-level so a Groq outage trips the circuit globally — if Groq is down
 // for one source it's down for all of them, and stalling per-article is wasteful.
@@ -86,19 +80,6 @@ function parseDate(value: string | undefined): Date | null {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-/**
- * Enforces Nominatim's 1 req/sec usage policy by waiting if the last
- * geocode call was less than GEOCODE_MIN_INTERVAL_MS ago.
- */
-async function throttleGeocode(): Promise<void> {
-  const now = Date.now();
-  const wait = lastGeocodeMs + GEOCODE_MIN_INTERVAL_MS - now;
-  if (wait > 0) {
-    await new Promise<void>((resolve) => setTimeout(resolve, wait));
-  }
-  lastGeocodeMs = Date.now();
 }
 
 /**
@@ -262,9 +243,8 @@ export async function ingestRssSource(sourceId: string) {
       }
     }
 
-    // Nominatim fallback: rate-limited to respect the 1 req/sec policy
+    // Nominatim fallback: geocoder enforces its own 1 req/sec rate limit internally
     if (!geoCoords && extracted.country === null && extracted.isLikelyRiskEvent) {
-      await throttleGeocode();
       const geocoded = await geocodeLocation(title);
       if (geocoded) {
         extracted.country = geocoded.country;
@@ -279,34 +259,6 @@ export async function ingestRssSource(sourceId: string) {
         });
       }
     }
-
-    // AI enhancement: guarded by circuit breaker to avoid stalling on Groq outages.
-    // Skipped for GeoRSS feeds — coordinates are already precise.
-    if (extracted.isLikelyRiskEvent && !geoCoords) {
-      const aiResult = await extractWithAIGuarded(title, rawText);
-      if (aiResult) {
-        extracted.category = aiResult.category;
-        extracted.severity = aiResult.severity;
-        extracted.summary = aiResult.summary;
-        extracted.signals.push({
-          kind: "category",
-          label: "ai:groq_extraction",
-          detail: `Category and severity refined by Groq (${GROQ_MODEL}).`,
-          weight: 0.1
-        });
-      }
-    }
-
-    // Event dedup via in-memory filter — no DB query per item
-    const duplicateEvent = extracted.isLikelyRiskEvent
-      ? recentEvents
-          .filter(
-            (e) =>
-              e.category === extracted.category &&
-              (extracted.country === null || e.country === extracted.country)
-          )
-          .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e))
-      : undefined;
 
     if (!extracted.isLikelyRiskEvent) {
       // Non-risk article: create the raw record only (no transaction needed — single write)
@@ -323,6 +275,18 @@ export async function ingestRssSource(sourceId: string) {
       createdArticles += 1;
       continue;
     }
+
+    // Event dedup via in-memory filter — run before AI extraction so:
+    // (a) we use the rules-based category that is consistent with how existing events
+    //     were classified when they were first created, and
+    // (b) we avoid wasting Groq API calls on articles that turn out to be duplicates.
+    const duplicateEvent = recentEvents
+      .filter(
+        (e) =>
+          e.category === extracted.category &&
+          (extracted.country === null || e.country === extracted.country)
+      )
+      .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e));
 
     if (duplicateEvent) {
       // Atomic: create article + link to existing event
@@ -348,8 +312,29 @@ export async function ingestRssSource(sourceId: string) {
           }
         });
       });
+      // Keep in-memory snapshot current so additional duplicates in this batch
+      // each get a fresh increment instead of all writing the same stale value.
+      duplicateEvent.confidence = Math.min(1, duplicateEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT);
       createdArticles += 1;
       continue;
+    }
+
+    // AI enhancement: guarded by circuit breaker to avoid stalling on Groq outages.
+    // Only runs for new risk events — duplicates are handled above without AI.
+    // Skipped for GeoRSS feeds — coordinates are already precise.
+    if (!geoCoords) {
+      const aiResult = await extractWithAIGuarded(title, rawText);
+      if (aiResult) {
+        extracted.category = aiResult.category;
+        extracted.severity = aiResult.severity;
+        extracted.summary = aiResult.summary;
+        extracted.signals.push({
+          kind: "category",
+          label: "ai:groq_extraction",
+          detail: `Category and severity refined by Groq (${GROQ_MODEL}).`,
+          weight: 0.1
+        });
+      }
     }
 
     // Score only when actually creating a new event — not needed for the duplicate path above
