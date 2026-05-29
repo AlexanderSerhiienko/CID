@@ -408,11 +408,17 @@ export async function ingestRssSource(sourceId: string) {
   } catch (err) {
     // DB/transaction errors inside the article loop are captured here so they
     // are visible in the admin dashboard via source.lastError, not just in BullMQ logs.
-    const errorMessage = err instanceof Error ? err.message : "Pipeline error during article processing";
-    await prisma.source.update({
-      where: { id: sourceId },
-      data: { lastError: errorMessage }
-    });
+    // The update is best-effort: if the DB is also unavailable we must not swallow
+    // the original error, so any failure here is silently ignored.
+    try {
+      const errorMessage = err instanceof Error ? err.message : "Pipeline error during article processing";
+      await prisma.source.update({
+        where: { id: sourceId },
+        data: { lastError: errorMessage }
+      });
+    } catch {
+      // best-effort — ignore so the original error always propagates
+    }
     throw err;
   }
 
