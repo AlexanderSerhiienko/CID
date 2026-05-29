@@ -10,88 +10,68 @@ Source -> RawArticle -> Extraction -> Normalization -> Deduplication -> Scoring 
 
 ## Current Status
 
-This repository currently contains the first vertical MVP skeleton. It is enough to show the intended architecture and run code-level checks, but it is not yet a polished product.
+Full pipeline is implemented and deployed. The project runs in production on Vercel + Supabase + Upstash Redis with a daily Vercel Cron job triggering ingestion.
 
 Implemented:
 
 - Next.js App Router application structure
 - Prisma schema for `Source`, `RawArticle`, and `RiskEvent`
-- Source management page and API
+- Source management page and API with `lastIngestedAt` and `lastError` tracking per source
 - Seed catalog with 10 official/open-data sources
 - Source enable/disable and trust score editing
 - RSS ingestion API with deterministic extraction
-- Country-level location extraction for map points
+- GeoRSS coordinate parsing from Atom feeds (USGS, GDACS)
+- Nominatim geocoder fallback when the location dictionary misses an entity
 - URL and content hash deduplication
-- Basic event similarity deduplication
+- Event similarity deduplication
 - Severity and confidence scoring rules
-- Auto-publishing for high-confidence located events
-- Review queue with approve/reject actions
-- Review queue edit form for correcting event fields before approval
-- Review queue merge action for attaching duplicate evidence to an existing event
+- Groq AI extraction for category, severity, and summary refinement (with deterministic fallback)
+- Circuit-breaker guard on Groq to prevent ingestion stalls on API timeouts
+- Auto-publishing for high-confidence located events; looser threshold for OFFICIAL_FEED sources
+- Bulk-approve action for batch review queue processing
+- Review queue with approve/reject/edit/merge actions
 - Ranked merge suggestions with reason text
 - Persisted extraction/scoring signals for explainable review candidates
 - Review evidence with source, publication date, and raw article excerpt
+- `occurredAt` field on events + time-window filter on dashboard map
+- Timestamps and freshness indicator across events table and detail page
+- Category and severity filters on the events page
+- Pagination across events API, events page, and review queue
+- RSS 2.0 feed output at `/api/events/feed.xml`
+- `/api/health` endpoint with DB and Redis status checks
 - Lightweight admin token boundary for mutation APIs
-- Clear protected-action error UX for missing admin token
 - Dashboard, events table, event detail page, and sources page
 - Leaflet choropleth risk map with country-level green/yellow/red polygon fills
 - BullMQ queue and ingestion worker entrypoint
-- Docker Compose for PostgreSQL and Redis
-- GitHub Actions CI
-- Initial tests for extraction, scoring, and deduplication
-- Source validation and pipeline behavior tests
+- Vercel Cron job (daily on Hobby plan) for automatic ingestion
+- Vercel Analytics and Speed Insights
+- Docker Compose for local PostgreSQL and Redis
+- GitHub Actions CI (typecheck + lint + test + build)
+- Unit tests for extraction, scoring, deduplication, merge, validation, and admin auth
 - Route-handler contract tests for protected mutation APIs
 - AI-native engineering workflow (`CLAUDE.md`, `agents/`, `ROADMAP.md`)
-
-Verified locally:
-
-- Docker PostgreSQL and Redis are running.
-- Initial Prisma migration was applied.
-- Seed sources were inserted.
-- Playwright verified the ingestion-to-review-to-dashboard loop.
-- Playwright verified edit-before-approval review flow.
-- Playwright verified source disable/enable and trust score editing.
-- Playwright verified manual merge from one review candidate into an existing published event.
-- Playwright verified ranked merge suggestions and successful merge.
-- Playwright verified mutation failure without admin token and success with saved token.
-- Playwright verified protected ingestion shows a clear missing-token message and succeeds after saving the token.
-- Route-handler tests verify admin-token enforcement and service calls for source, ingestion, and review mutations.
-- Review queue smoke check verified enriched evidence rendering after the `signals` migration.
-- Location backfill updated existing local events; 42 of 55 `RiskEvent` rows currently have coordinates.
-- Status backfill auto-published high-confidence located events; 16 of 16 `PUBLISHED` rows currently have coordinates.
-- Playwright verified the dashboard renders 16 published events after client-only map loading.
-- Playwright verified the country risk legend renders on the dashboard map.
-- Playwright verified country polygons render with no-data, green, orange, and red risk fills.
-- Playwright verified the expanded 10-source catalog renders on `/sources`.
-- Playwright verified all 10 sources show non-zero article counts after ingestion.
-- Current local dataset has 66 of 66 `PUBLISHED` events with coordinates after source ingestion and backfills.
-- Map risk colors now cap low-severity events to green/guarded colors so confidence does not imply impact.
-- Dashboard `Published` count now uses a real count query while the side list remains limited to latest events.
+- Custom CID MCP server for pipeline inspection
+- AI workflow automation hooks and slash commands (`.claude/`)
 
 Not yet complete:
 
-- Merge target suggestions are deterministic and still need better location quality.
-- Existing local events created before the `signals` migration have empty signal arrays unless backfilled.
-- Location extraction is deterministic and country-level for many feeds, not a full geocoder.
-- Some newly added public agency feeds may be noisy or intermittently unavailable.
 - Admin token auth is lightweight and not a full user/session system.
-- Ollama runtime extraction is documented but not implemented yet.
 - Full live database-backed API integration tests are still missing.
-- Extraction still creates noisy candidates from broad news feeds.
+- Extraction can still generate noisy candidates from broad news feeds.
+- Merge target suggestions are deterministic and may miss cross-feed duplicates.
 
 ## Stack
 
-- Next.js App Router
-- TypeScript
-- PostgreSQL
-- Prisma
-- Tailwind CSS
-- shadcn/ui
-- Leaflet or Mapbox
-- BullMQ and Redis
-- Docker Compose
-- GitHub Actions
-- Optional local Ollama for extraction assistance
+- Next.js 15 App Router, React 19, TypeScript
+- PostgreSQL + Prisma ORM
+- BullMQ + Redis (ioredis)
+- Tailwind CSS + shadcn/ui + Leaflet (choropleth risk map)
+- Groq API for optional AI extraction (with deterministic fallback)
+- Nominatim for geocoding fallback
+- Zod validation
+- Vitest
+- Docker Compose (local dev), Vercel + Supabase + Upstash (production)
+- GitHub Actions CI
 
 ## Core Event Categories
 
@@ -110,13 +90,15 @@ Not yet complete:
 - `/sources`: source management
 - `/admin/review`: human review queue
 
-## Backend API Plan
+## API Routes
 
-- `/app/api/events/route.ts`
-- `/app/api/events/[id]/route.ts`
-- `/app/api/sources/route.ts`
-- `/app/api/ingest/rss/route.ts`
-- `/app/api/admin/review/route.ts`
+- `GET/POST /api/events` — list and filter events (paginated)
+- `GET /api/events/[id]` — event detail
+- `GET /api/events/feed.xml` — RSS 2.0 feed of published events
+- `GET/POST /api/sources` — list and create sources
+- `POST /api/ingest/rss` — trigger ingestion (admin-protected)
+- `PATCH /api/admin/review` — approve/reject/merge review candidates (admin-protected)
+- `GET /api/health` — DB and Redis connectivity check
 
 ## AI-Native Engineering Workflow
 
@@ -142,6 +124,16 @@ Architecture Decision Records are stored in `docs/adr/`.
 - [ADR 002: Hybrid Extraction With Rules Before Ollama](docs/adr/002-hybrid-extraction-rules-before-ollama.md)
 - [ADR 003: BullMQ For Ingestion Jobs](docs/adr/003-bullmq-for-ingestion-jobs.md)
 - [ADR 004: First Vertical Slice Before Feature Expansion](docs/adr/004-first-vertical-slice-before-feature-expansion.md)
+
+## Deployment
+
+Production stack: Vercel (Next.js + Cron), Supabase (PostgreSQL), Upstash (Redis).
+
+Set the following environment variables in Vercel:
+- `DATABASE_URL` — Supabase connection string
+- `REDIS_URL` — Upstash Redis URL
+- `ADMIN_TOKEN` — secret for admin-protected routes
+- `GROQ_API_KEY` — optional, enables AI extraction
 
 ## Local Development
 
