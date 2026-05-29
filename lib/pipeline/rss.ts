@@ -289,7 +289,11 @@ export async function ingestRssSource(sourceId: string) {
       .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e));
 
     if (duplicateEvent) {
-      // Atomic: create article + link to existing event
+      // Atomic: create article + link to existing event.
+      // In-memory confidence is updated AFTER the transaction commits so that
+      // a DB failure leaves the snapshot consistent with the database — if the
+      // transaction throws, the exception propagates and the line below is never
+      // reached, preserving the invariant for any subsequent duplicates in this batch.
       await prisma.$transaction(async (tx) => {
         const article = await tx.rawArticle.create({
           data: {
