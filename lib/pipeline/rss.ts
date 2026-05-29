@@ -105,7 +105,12 @@ async function extractWithAIGuarded(
         `[groq] Circuit opened after ${GROQ_CIRCUIT_THRESHOLD} consecutive failures. ` +
           `Skipping AI extraction for ${GROQ_CIRCUIT_RESET_MS / 60_000} minutes.`
       );
-      groqConsecutiveNulls = 0;
+      // Do NOT reset groqConsecutiveNulls here. With worker concurrency > 1 two jobs
+      // can race: Job A opens the circuit and resets the counter, then Job B (which
+      // read the counter before Job A wrote) increments the now-reset value to 1,
+      // clobbering Job A's open signal. Leaving the counter at its current value is
+      // safe: groqCircuitOpenUntil already gates all subsequent calls, and the next
+      // successful Groq response (else branch below) will reset the counter to 0.
     }
   } else {
     groqConsecutiveNulls = 0;
