@@ -74,6 +74,16 @@ export function normalizeUrl(url: string) {
 export function stripHtml(input: string) {
   return input
     .replace(/<[^>]*>/g, " ")
+    // Decode common HTML entities so summaries and titles stored in the DB
+    // contain readable text rather than raw entity sequences like &amp; or &lt;
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;|&#0?39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/\s+/g, " ")
     .trim();
 }
