@@ -34,12 +34,16 @@ async function main() {
       rawText: article.rawText
     });
 
+    // Mirror the main pipeline's 5-day dedup window (rss.ts) instead of a hard
+    // take:25 cap that silently misses duplicates in high-volume category+country
+    // combinations, creating phantom duplicate events.
+    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1_000);
     const existingEvents = await prisma.riskEvent.findMany({
       where: {
         category: extracted.category,
-        country: extracted.country ?? undefined
+        country: extracted.country ?? undefined,
+        createdAt: { gte: fiveDaysAgo }
       },
-      take: 25,
       orderBy: { createdAt: "desc" }
     });
 
