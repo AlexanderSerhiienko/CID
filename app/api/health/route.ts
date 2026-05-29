@@ -14,7 +14,7 @@ export async function GET() {
   }
 
   // Redis check
-  try {
+  {
     const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
     const isTls = redisUrl.startsWith("rediss://");
     const redis = new IORedis(redisUrl, {
@@ -23,12 +23,17 @@ export async function GET() {
       lazyConnect: true,
       tls: isTls ? {} : undefined
     });
-    await redis.connect();
-    await redis.ping();
-    await redis.quit();
-    checks.redis = "ok";
-  } catch {
-    checks.redis = "error";
+    try {
+      await redis.connect();
+      await redis.ping();
+      checks.redis = "ok";
+    } catch {
+      checks.redis = "error";
+    } finally {
+      // Always disconnect — if ping() threw after connect() the connection
+      // would otherwise leak on the Redis server side until its idle timeout.
+      await redis.quit().catch(() => {});
+    }
   }
 
   const allOk = Object.values(checks).every((v) => v === "ok");
