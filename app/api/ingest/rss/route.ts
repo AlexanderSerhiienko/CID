@@ -25,7 +25,14 @@ export async function POST(request: NextRequest) {
     ? await prisma.source.findMany({ where: { id: payload.data.sourceId, enabled: true } })
     : await prisma.source.findMany({ where: { enabled: true } });
 
-  if (payload.data.queue) {
+  // Multi-source ingestion always goes through BullMQ so sources are processed
+  // sequentially. Each job's recentEvents snapshot sees events created by the
+  // previous job — preventing cross-source duplicate RiskEvents for the same crisis.
+  //
+  // Single-source ingestion runs synchronously: no concurrency, no race, no timeout.
+  const useQueue = payload.data.queue || sources.length > 1;
+
+  if (useQueue) {
     const { ingestionQueue } = await import("@/lib/queue");
     const jobs = await Promise.all(
       sources.map((source) =>
@@ -38,42 +45,23 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Run all sources in parallel — sequential processing risks Vercel's 60 s timeout
-  // when multiple sources are present (10 sources × 10 s each = guaranteed timeout).
-  //
-  // Known limitation: each ingestRssSource call builds its own recentEvents snapshot
-  // at startup. Two parallel calls may both create separate RiskEvents for the same
-  // crisis reported by different sources (no cross-source dedup in this path).
-  // Use ?queue=true for multi-source ingestion — BullMQ processes jobs sequentially
-  // so each job sees events created by the previous one, preventing cross-source dups.
-  if (sources.length > 1 && !payload.data.sourceId) {
-    console.warn(
-      "[ingest] Running %d sources in parallel — consider queue:true to avoid cross-source duplicate events.",
-      sources.length
+  // Single source — synchronous path is safe (no concurrency, no Vercel timeout risk).
+  const source = sources[0];
+
+  if (!source) {
+    return NextResponse.json({ results: [] }, { status: 200 });
+  }
+
+  try {
+    const result = await ingestRssSource(source.id);
+    return NextResponse.json({
+      results: [{ sourceId: source.id, sourceName: source.name, ok: true, result }]
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "Unknown ingestion error";
+    return NextResponse.json(
+      { results: [{ sourceId: source.id, sourceName: source.name, ok: false, error }] },
+      { status: 502 }
     );
   }
-  const settled = await Promise.allSettled(
-    sources.map(async (source) => {
-      const result = await ingestRssSource(source.id);
-      return { sourceId: source.id, sourceName: source.name, result };
-    })
-  );
-
-  const results = sources.map((source, i) => {
-    const outcome = settled[i];
-    if (outcome.status === "fulfilled") {
-      return { sourceId: source.id, sourceName: source.name, ok: true, result: outcome.value.result };
-    }
-    const reason = outcome.reason as unknown;
-    return {
-      sourceId: source.id,
-      sourceName: source.name,
-      ok: false,
-      error: reason instanceof Error ? reason.message : "Unknown ingestion error"
-    };
-  });
-
-  const status = results.some((result) => result.ok) || results.length === 0 ? 200 : 502;
-
-  return NextResponse.json({ results }, { status });
 }
