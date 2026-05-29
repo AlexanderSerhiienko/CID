@@ -286,11 +286,11 @@ function detectRiskSignals(text: string): string[] {
 }
 
 function isMagnitudeEarthquakeText(text: string): boolean {
-  return /\bm\s?\d(?:\.\d)?\s+-/.test(text);
+  return /\bm\s?\d+(?:\.\d+)?\s+-/.test(text);
 }
 
 function earthquakeMagnitude(text: string): number {
-  return Number(text.match(/\bm\s?(\d(?:\.\d)?)/)?.[1] ?? 0);
+  return Number(text.match(/\bm\s?(\d+(?:\.\d+)?)/)?.[1] ?? 0);
 }
 
 function buildExtractionSignals(input: {

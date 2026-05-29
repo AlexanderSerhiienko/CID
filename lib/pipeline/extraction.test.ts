@@ -116,6 +116,18 @@ describe("extractEventFromArticle", () => {
     expect(event.country).toBe("India");
   });
 
+  it("classifies USGS magnitude titles with 2-decimal magnitudes as natural disasters", () => {
+    const event = extractEventFromArticle({
+      title: "M 5.30 - 12 km NNE of Pahala, Hawaii",
+      rawText: "USGS earthquake feed item."
+    });
+
+    expect(event.category).toBe(EventCategory.NATURAL_DISASTER);
+    expect(event.isLikelyRiskEvent).toBe(true);
+    expect(event.riskSignals).toEqual(expect.arrayContaining(["earthquake", "magnitude"]));
+    expect(event.severity).toBe(Severity.MEDIUM);
+  });
+
   it("gives MEDIUM severity a lower confidence bonus than HIGH", () => {
     const medium = extractEventFromArticle({
       title: "Confirmed breach at hospital network in France",
