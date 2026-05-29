@@ -199,6 +199,21 @@ describe("scoreCandidate", () => {
     );
   });
 
+  it("does not downgrade CRITICAL severity when HIGH escalation terms are present", () => {
+    const score = scoreCandidate({
+      category: EventCategory.POLITICAL_UNREST,
+      severity: Severity.CRITICAL,
+      confidence: 0.8,
+      locationConfidence: 0.7,
+      source: { trustScore: 0.9 },
+      rawText: "confirmed deaths reported after major attack"
+    });
+
+    // Text contains HIGH escalation term ("deaths") but no CRITICAL term.
+    // Severity must stay CRITICAL, not be downgraded to HIGH.
+    expect(score.severity).toBe(Severity.CRITICAL);
+  });
+
   it("auto-publishes confident high-severity located candidates", () => {
     const score = scoreCandidate({
       category: EventCategory.NATURAL_DISASTER,

@@ -17,6 +17,14 @@ const OFFICIAL_FEED_CONFIDENCE_THRESHOLD = 0.6;
 const HIGH_SEVERITY_ESCALATION_TERMS = ["death", "deaths", "hospitalized", "evacuation", "critical infrastructure"];
 const CRITICAL_SEVERITY_ESCALATION_TERMS = ["mass casualty", "catastrophic", "state of emergency"];
 
+// Ordinal map for severity comparison — escalation must only move upward.
+const SEVERITY_RANK: Record<Severity, number> = {
+  [Severity.LOW]: 0,
+  [Severity.MEDIUM]: 1,
+  [Severity.HIGH]: 2,
+  [Severity.CRITICAL]: 3
+};
+
 export function scoreCandidate(input: {
   category: EventCategory;
   severity: Severity;
@@ -60,7 +68,9 @@ export function scoreCandidate(input: {
 
   let severity = input.severity;
   if (HIGH_SEVERITY_ESCALATION_TERMS.some((word) => lower.includes(word))) {
-    severity = Severity.HIGH;
+    if (SEVERITY_RANK[severity] < SEVERITY_RANK[Severity.HIGH]) {
+      severity = Severity.HIGH;
+    }
     signals.push({
       kind: "severity",
       label: "severity:impact_terms",
@@ -69,7 +79,9 @@ export function scoreCandidate(input: {
   }
 
   if (CRITICAL_SEVERITY_ESCALATION_TERMS.some((word) => lower.includes(word))) {
-    severity = Severity.CRITICAL;
+    if (SEVERITY_RANK[severity] < SEVERITY_RANK[Severity.CRITICAL]) {
+      severity = Severity.CRITICAL;
+    }
     signals.push({
       kind: "severity",
       label: "severity:critical_terms",
