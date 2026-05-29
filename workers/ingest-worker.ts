@@ -9,7 +9,13 @@ const worker = new Worker(
   },
   {
     connection,
-    concurrency: 2
+    // concurrency: 1 is required for correct cross-source deduplication.
+    // With concurrency > 1, two source jobs run simultaneously — each builds
+    // its own recentEvents snapshot and cannot see events created by the other,
+    // causing duplicate RiskEvents for the same crisis from different sources.
+    // Since jobs run in the background (no Vercel timeout), sequential processing
+    // is acceptable: ~10 s per source × 10 sources = ~100 s, well within limits.
+    concurrency: 1
   }
 );
 
