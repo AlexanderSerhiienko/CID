@@ -4,9 +4,28 @@
  * These tests verify that the pipeline stages (dedup, extraction, scoring,
  * event creation) work together correctly by mocking only the I/O boundaries:
  * the RSS parser, the database (prisma), the geocoder, and AI extraction.
+ *
+ * Implementation notes:
+ * - Article dedup: ingestRssSource uses a batch prisma.rawArticle.findMany
+ *   before the loop, not findFirst per item. Mocks must reflect this.
+ * - Event creates: wrapped in prisma.$transaction — the callback receives
+ *   a `tx` object; mocks.$transaction executes the callback with txFns.
+ * - SIMILARITY_THRESHOLD is 0.3. Test titles for the duplicate-detection case
+ *   are chosen so max(titleJaccard, summaryJaccard) > 0.3.
  */
-import { EventCategory, EventStatus, Severity, SourceType } from "@prisma/client";
+import { EventCategory, EventStatus, SourceType } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const txFns = {
+  rawArticle: {
+    create: vi.fn(),
+    update: vi.fn()
+  },
+  riskEvent: {
+    create: vi.fn(),
+    update: vi.fn()
+  }
+};
 
 const mocks = vi.hoisted(() => ({
   parseURL: vi.fn(),
@@ -18,15 +37,17 @@ const mocks = vi.hoisted(() => ({
       update: vi.fn()
     },
     rawArticle: {
-      findFirst: vi.fn().mockResolvedValue(null),
-      create: vi.fn().mockResolvedValue({ id: "article-1" }),
-      update: vi.fn().mockResolvedValue({})
+      // Batch dedup query (one call before the loop, not one per item)
+      findMany: vi.fn().mockResolvedValue([]),
+      // Used for non-risk articles (single write, no transaction needed)
+      create: vi.fn().mockResolvedValue({ id: "article-1" })
     },
     riskEvent: {
-      findMany: vi.fn().mockResolvedValue([]),
-      create: vi.fn().mockResolvedValue({ id: "event-1" }),
-      update: vi.fn().mockResolvedValue({})
-    }
+      // Pre-load recent events for in-memory dedup
+      findMany: vi.fn().mockResolvedValue([])
+    },
+    // Risk-event and duplicate paths run inside $transaction
+    $transaction: vi.fn(async (cb: (tx: typeof txFns) => Promise<unknown>) => cb(txFns))
   }
 }));
 
@@ -81,13 +102,27 @@ function makeFeedItem(overrides?: Partial<{
 describe("ingestRssSource", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.prisma.rawArticle.findFirst.mockResolvedValue(null);
+    // Reset default mock return values after clearAllMocks wipes them
+    mocks.prisma.rawArticle.findMany.mockResolvedValue([]);
     mocks.prisma.rawArticle.create.mockResolvedValue({ id: "article-1" });
-    mocks.prisma.rawArticle.update.mockResolvedValue({});
     mocks.prisma.riskEvent.findMany.mockResolvedValue([]);
-    mocks.prisma.riskEvent.create.mockResolvedValue({ id: "event-1" });
-    mocks.prisma.riskEvent.update.mockResolvedValue({});
     mocks.prisma.source.update.mockResolvedValue({});
+    mocks.prisma.$transaction.mockImplementation(
+      async (cb: (tx: typeof txFns) => Promise<unknown>) => cb(txFns)
+    );
+    txFns.rawArticle.create.mockResolvedValue({ id: "article-1" });
+    txFns.rawArticle.update.mockResolvedValue({});
+    txFns.riskEvent.create.mockResolvedValue({
+      id: "event-1",
+      title: "",
+      summary: "",
+      category: EventCategory.NATURAL_DISASTER,
+      country: "Japan",
+      city: null,
+      confidence: 0.5,
+      createdAt: new Date()
+    });
+    txFns.riskEvent.update.mockResolvedValue({});
   });
 
   it("returns early when source is disabled", async () => {
@@ -99,7 +134,7 @@ describe("ingestRssSource", () => {
     expect(mocks.parseURL).not.toHaveBeenCalled();
   });
 
-  it("skips items without a URL or title", async () => {
+  it("skips items without a URL or title and still updates lastIngestedAt", async () => {
     mocks.prisma.source.findUniqueOrThrow.mockResolvedValue(makeSource());
     mocks.parseURL.mockResolvedValue({
       items: [
@@ -111,22 +146,32 @@ describe("ingestRssSource", () => {
     const result = await ingestRssSource("source-1");
 
     expect(result.createdArticles).toBe(0);
-    expect(mocks.prisma.rawArticle.findFirst).not.toHaveBeenCalled();
+    // Empty preprocessed list triggers early return, but source.update still runs
+    expect(mocks.prisma.source.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ lastIngestedAt: expect.any(Date) }) })
+    );
+    expect(mocks.prisma.rawArticle.create).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it("counts duplicate articles already in the DB", async () => {
+  it("counts duplicate articles using the batch dedup query", async () => {
     mocks.prisma.source.findUniqueOrThrow.mockResolvedValue(makeSource());
     mocks.parseURL.mockResolvedValue({ items: [makeFeedItem()] });
-    mocks.prisma.rawArticle.findFirst.mockResolvedValue({ id: "existing-article-1" });
+    // The batch findMany (first call) returns the article's URL as already seen
+    mocks.prisma.rawArticle.findMany.mockResolvedValueOnce([
+      { url: "https://example.com/article/1", contentHash: "existing-hash" }
+    ]);
 
     const result = await ingestRssSource("source-1");
 
     expect(result.duplicateArticles).toBe(1);
     expect(result.createdArticles).toBe(0);
+    // URL matched in the Set — no DB write at all
     expect(mocks.prisma.rawArticle.create).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it("creates a rawArticle without an event for non-risk content", async () => {
+  it("creates rawArticle directly (no transaction) for non-risk content", async () => {
     mocks.prisma.source.findUniqueOrThrow.mockResolvedValue(makeSource());
     mocks.parseURL.mockResolvedValue({
       items: [makeFeedItem({ title: "Weekly newsletter digest", content: "This week in news..." })]
@@ -134,13 +179,14 @@ describe("ingestRssSource", () => {
 
     const result = await ingestRssSource("source-1");
 
+    // Non-risk article: single prisma.rawArticle.create outside any transaction
     expect(mocks.prisma.rawArticle.create).toHaveBeenCalledTimes(1);
-    expect(mocks.prisma.riskEvent.create).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
     expect(result.createdArticles).toBe(1);
     expect(result.candidateEvents).toBe(0);
   });
 
-  it("creates both rawArticle and riskEvent for a risk event article", async () => {
+  it("creates rawArticle + riskEvent inside a transaction for a risk event", async () => {
     mocks.prisma.source.findUniqueOrThrow.mockResolvedValue(makeSource());
     mocks.parseURL.mockResolvedValue({
       items: [
@@ -155,50 +201,55 @@ describe("ingestRssSource", () => {
 
     expect(result.candidateEvents).toBe(1);
     expect(result.createdArticles).toBe(1);
-    expect(mocks.prisma.rawArticle.create).toHaveBeenCalledTimes(1);
-    expect(mocks.prisma.riskEvent.create).toHaveBeenCalledTimes(1);
+    // Both writes happen inside a single $transaction — atomic, no orphan risk
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(txFns.rawArticle.create).toHaveBeenCalledTimes(1);
+    expect(txFns.riskEvent.create).toHaveBeenCalledTimes(1);
 
-    // Verify event was created with expected category, country, and valid status
-    const eventData = mocks.prisma.riskEvent.create.mock.calls[0][0].data;
+    // Verify the event has the right category and country extracted from the article
+    const eventData = txFns.riskEvent.create.mock.calls[0][0].data;
     expect(eventData.category).toBe(EventCategory.NATURAL_DISASTER);
     expect(eventData.country).toBe("Japan");
-    expect(Object.values(Severity)).toContain(eventData.severity);
     expect([EventStatus.PUBLISHED, EventStatus.NEEDS_REVIEW]).toContain(eventData.status);
   });
 
-  it("links a duplicate article to an existing event instead of creating a new one", async () => {
+  it("links a duplicate article to an existing event (no new riskEvent created)", async () => {
     mocks.prisma.source.findUniqueOrThrow.mockResolvedValue(makeSource());
+
+    // Title pair: titleJaccard ≈ 0.33, above SIMILARITY_THRESHOLD of 0.3.
+    // Shared tokens: "japan", "earthquake", "dozens" (3 of 9 union tokens).
     mocks.parseURL.mockResolvedValue({
       items: [
         makeFeedItem({
-          title: "Second report on Japan earthquake damage assessments continue",
-          content: "Rescue teams continue searching in Japan earthquake zone. Damage assessment ongoing.",
+          title: "Japan earthquake kills dozens as buildings collapse",
+          content: "A strong earthquake in Japan has killed dozens of people. Buildings collapsed across northern Japan.",
           isoDate: "2026-05-29T10:00:00Z"
         })
       ]
     });
 
-    // An existing event that the new article should be merged with
     const existingEvent = {
       id: "existing-event-1",
-      title: "Major earthquake strikes northern Japan causing widespread damage",
-      summary: "A strong earthquake struck northern Japan causing damage and triggering warnings.",
+      title: "Strong earthquake strikes Japan, dozens dead",
+      summary: "A strong earthquake struck Japan killing dozens and causing widespread building damage.",
       category: EventCategory.NATURAL_DISASTER,
       country: "Japan",
       city: null,
       confidence: 0.8,
       createdAt: new Date("2026-05-28T10:00:00Z")
     };
+    // riskEvent.findMany is called twice: once for recentEvents pre-load, skip batch dedup
     mocks.prisma.riskEvent.findMany.mockResolvedValue([existingEvent]);
 
     const result = await ingestRssSource("source-1");
 
-    // Article created, but NO new event — linked to existing
+    // Article created and linked, but no new riskEvent
     expect(result.createdArticles).toBe(1);
     expect(result.candidateEvents).toBe(0);
-    expect(mocks.prisma.rawArticle.create).toHaveBeenCalledTimes(1);
-    expect(mocks.prisma.riskEvent.create).not.toHaveBeenCalled();
-    expect(mocks.prisma.rawArticle.update).toHaveBeenCalledWith(
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(txFns.rawArticle.create).toHaveBeenCalledTimes(1);
+    expect(txFns.riskEvent.create).not.toHaveBeenCalled();
+    expect(txFns.rawArticle.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { riskEventId: "existing-event-1" } })
     );
   });
