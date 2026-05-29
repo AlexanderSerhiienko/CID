@@ -10,6 +10,7 @@ const CONFIDENCE_BASE = 0.25;
 const CONFIDENCE_CATEGORY_BONUS = 0.25;
 const CONFIDENCE_LOCATION_WEIGHT = 0.25;
 const CONFIDENCE_SEVERITY_LOW_BONUS = 0.05;
+const CONFIDENCE_SEVERITY_MEDIUM_BONUS = 0.10;
 const CONFIDENCE_SEVERITY_HIGH_BONUS = 0.15;
 
 const HIGH_SEVERITY_KEYWORDS = ["death", "deaths", "fatal", "evacuation", "critical", "emergency"];
@@ -376,7 +377,11 @@ export function extractEventFromArticle(input: { title: string; rawText: string 
     CONFIDENCE_BASE +
     (category === EventCategory.UNKNOWN ? 0 : CONFIDENCE_CATEGORY_BONUS) +
     location.locationConfidence * CONFIDENCE_LOCATION_WEIGHT +
-    (severity === Severity.LOW ? CONFIDENCE_SEVERITY_LOW_BONUS : CONFIDENCE_SEVERITY_HIGH_BONUS);
+    (severity === Severity.LOW
+      ? CONFIDENCE_SEVERITY_LOW_BONUS
+      : severity === Severity.MEDIUM
+        ? CONFIDENCE_SEVERITY_MEDIUM_BONUS
+        : CONFIDENCE_SEVERITY_HIGH_BONUS);
 
   const signals = buildExtractionSignals({
     category,
