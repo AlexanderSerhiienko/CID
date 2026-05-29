@@ -65,6 +65,32 @@ describe("isDuplicateCandidate", () => {
     ).toBe(false);
   });
 
+  it("does not merge distinct events in the same country (low title overlap)", () => {
+    const createdAt = new Date("2026-05-18T10:00:00Z");
+
+    // "earthquake Japan" vs "flood Japan" — only country token shared
+    expect(
+      isDuplicateCandidate(
+        {
+          title: "Major 7.0 earthquake strikes northern Japan coastline",
+          summary: "A strong earthquake caused damage along Japan's northern coast.",
+          category: EventCategory.NATURAL_DISASTER,
+          country: "Japan",
+          city: null,
+          publishedAt: new Date("2026-05-19T10:00:00Z")
+        },
+        {
+          title: "Severe flooding kills five in western Japan after heavy rainfall",
+          summary: "Floodwaters swept through western Japan following record rainfall.",
+          category: EventCategory.NATURAL_DISASTER,
+          country: "Japan",
+          city: null,
+          createdAt
+        }
+      )
+    ).toBe(false);
+  });
+
   it("does not merge unknown-location events automatically", () => {
     const createdAt = new Date("2026-05-18T10:00:00Z");
 

@@ -92,7 +92,7 @@ describe("protected API route contracts", () => {
 
   it("runs RSS ingestion for enabled sources with a valid admin token", async () => {
     mocks.prisma.source.findMany.mockResolvedValue([{ id: "source-1", name: "WHO", enabled: true }]);
-    mocks.ingestRssSource.mockResolvedValue({ rawArticles: 2, candidateEvents: 1 });
+    mocks.ingestRssSource.mockResolvedValue({ sourceId: "source-1", createdArticles: 2, duplicateArticles: 0, candidateEvents: 1 });
 
     const response = await ingestPost(
       jsonRequest("/api/ingest/rss", {}, { token: "dev-admin-token" })
@@ -104,7 +104,7 @@ describe("protected API route contracts", () => {
           sourceId: "source-1",
           sourceName: "WHO",
           ok: true,
-          result: { rawArticles: 2, candidateEvents: 1 }
+          result: { sourceId: "source-1", createdArticles: 2, duplicateArticles: 0, candidateEvents: 1 }
         }
       ]
     });
@@ -141,6 +141,26 @@ describe("protected API route contracts", () => {
         status: EventStatus.PUBLISHED
       }
     });
+  });
+
+  it("returns 409 when approving a non-existent or already-processed event", async () => {
+    // updateMany returns count: 0 when no row matches the where clause.
+    // This handles both "event not found" and "event not in NEEDS_REVIEW" without
+    // a separate lookup — and avoids the Prisma P2025 throw that would produce 500.
+    mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await reviewPatch(
+      jsonRequest(
+        "/api/admin/review",
+        { id: "does-not-exist", action: "approve" },
+        { token: "dev-admin-token" }
+      )
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: "Event not found or not in NEEDS_REVIEW state."
+    });
+    expect(response.status).toBe(409);
   });
 
   it("rejects merge review action without target event id", async () => {

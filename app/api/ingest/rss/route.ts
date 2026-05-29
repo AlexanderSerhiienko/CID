@@ -38,25 +38,28 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const results = [];
+  // Run all sources in parallel — sequential processing risks Vercel's 60 s timeout
+  // when multiple sources are present (10 sources × 10 s each = guaranteed timeout).
+  const settled = await Promise.allSettled(
+    sources.map(async (source) => {
+      const result = await ingestRssSource(source.id);
+      return { sourceId: source.id, sourceName: source.name, result };
+    })
+  );
 
-  for (const source of sources) {
-    try {
-      results.push({
-        sourceId: source.id,
-        sourceName: source.name,
-        ok: true,
-        result: await ingestRssSource(source.id)
-      });
-    } catch (error) {
-      results.push({
-        sourceId: source.id,
-        sourceName: source.name,
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown ingestion error"
-      });
+  const results = sources.map((source, i) => {
+    const outcome = settled[i];
+    if (outcome.status === "fulfilled") {
+      return { sourceId: source.id, sourceName: source.name, ok: true, result: outcome.value.result };
     }
-  }
+    const reason = outcome.reason as unknown;
+    return {
+      sourceId: source.id,
+      sourceName: source.name,
+      ok: false,
+      error: reason instanceof Error ? reason.message : "Unknown ingestion error"
+    };
+  });
 
   const status = results.some((result) => result.ok) || results.length === 0 ? 200 : 502;
 
