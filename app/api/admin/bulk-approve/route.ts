@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await prisma.riskEvent.updateMany({
-    where: { id: { in: officialIds } },
+    where: { id: { in: officialIds }, status: EventStatus.NEEDS_REVIEW },
     data: { status: EventStatus.PUBLISHED }
   });
 
