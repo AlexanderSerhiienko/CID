@@ -245,3 +245,26 @@ See `agents/` directory for role-specific instructions:
 - `agents/testing.md` — test strategy and edge cases
 - `agents/refactor.md` — cleanup and optimization
 - `agents/devops.md` — Docker, CI/CD, deployment
+
+---
+
+## AI Workflow Automation
+
+### Slash Commands (`.claude/commands/`)
+
+| Command | When to use |
+|---------|-------------|
+| `/decompose-issue <N>` | Before starting any non-trivial issue — fetches it and produces a planner.md-format plan |
+| `/issue-fix` | Picks the next ready-to-fix issue and implements it end-to-end |
+| `/bug-hunt` | Scans codebase for real bugs and files GitHub issues |
+| `/gen-pr-desc` | Generates PR title + body from current branch diff |
+| `/changelog` | Generates CHANGELOG entry from git log since last tag |
+| `/code-review` | Reviews current diff before opening a PR |
+| `/simplify` | Cleans up changed code after a feature lands |
+
+### Automated Hooks (`.claude/settings.json`)
+
+| Trigger | What happens |
+|---------|-------------|
+| Any `Write`/`Edit` to `lib/` | Warns if no corresponding `*.test.ts` exists |
+| `git push` | Blocks push if `typecheck`, `lint`, or `test` fail |

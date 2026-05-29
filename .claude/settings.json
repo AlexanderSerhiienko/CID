@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // \"\"' | { read -r f; if [[ \"$f\" == */lib/* ]] && [[ \"$f\" != *.test.ts ]]; then base=\"${f%.ts}\"; testfile=\"${base}.test.ts\"; if [ ! -f \"$testfile\" ]; then printf '{\"systemMessage\":\"Warning: %s does not exist — add a test for this lib/ file.\"}' \"$testfile\"; fi; fi; }",
+            "statusMessage": "Checking for test file..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push *)",
+            "command": "npm run typecheck && npm run lint && npm run test || (echo '{\"continue\": false, \"stopReason\": \"Quality checks failed (typecheck/lint/test). Fix errors before pushing.\"}'; exit 1)",
+            "timeout": 120,
+            "statusMessage": "Running typecheck + lint + test..."
+          }
+        ]
+      }
+    ]
+  }
+}
