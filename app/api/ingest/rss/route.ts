@@ -40,6 +40,18 @@ export async function POST(request: NextRequest) {
 
   // Run all sources in parallel — sequential processing risks Vercel's 60 s timeout
   // when multiple sources are present (10 sources × 10 s each = guaranteed timeout).
+  //
+  // Known limitation: each ingestRssSource call builds its own recentEvents snapshot
+  // at startup. Two parallel calls may both create separate RiskEvents for the same
+  // crisis reported by different sources (no cross-source dedup in this path).
+  // Use ?queue=true for multi-source ingestion — BullMQ processes jobs sequentially
+  // so each job sees events created by the previous one, preventing cross-source dups.
+  if (sources.length > 1 && !payload.data.sourceId) {
+    console.warn(
+      "[ingest] Running %d sources in parallel — consider queue:true to avoid cross-source duplicate events.",
+      sources.length
+    );
+  }
   const settled = await Promise.allSettled(
     sources.map(async (source) => {
       const result = await ingestRssSource(source.id);
