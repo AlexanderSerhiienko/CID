@@ -340,21 +340,36 @@ export async function ingestRssSource(sourceId: string) {
     if (!geoCoords) {
       const aiResult = await extractWithAIGuarded(title, rawText);
       if (aiResult) {
-        // Respect the AI's non-risk verdict — if Groq says this is not a risk event,
-        // override the rules-based classification and skip event creation.
         if (!aiResult.isRiskEvent) {
-          extracted.isLikelyRiskEvent = false;
-        } else {
-          // If AI upgrades from UNKNOWN to a concrete category, apply the category
-          // confidence bonus that was missed when extraction ran with UNKNOWN.
-          // CONFIDENCE_CATEGORY_BONUS = 0.25 (matches lib/pipeline/extraction.ts)
-          if (extracted.category === EventCategory.UNKNOWN && aiResult.category !== EventCategory.UNKNOWN) {
-            extracted.confidence = Math.min(1, Number((extracted.confidence + 0.25).toFixed(2)));
-          }
-          extracted.category = aiResult.category;
-          extracted.severity = aiResult.severity;
-          extracted.summary = aiResult.summary;
+          // AI overrides rules-based detection. The article is not a risk event —
+          // store the raw record only and skip event creation.
+          // NOTE: we cannot use the isLikelyRiskEvent flag here because the flag check
+          // at line 274 already ran (and passed). Setting it to false has no effect —
+          // execution continues past line 274 regardless. We must continue explicitly.
+          await prisma.rawArticle.create({
+            data: {
+              sourceId: source.id,
+              title,
+              url: itemUrl,
+              publishedAt,
+              contentHash: hash,
+              rawText
+            }
+          });
+          createdArticles += 1;
+          continue;
         }
+
+        // AI confirmed it is a risk event — apply category, severity, and summary.
+        // If AI upgrades from UNKNOWN to a concrete category, apply the category
+        // confidence bonus that was missed when extraction ran with UNKNOWN.
+        // CONFIDENCE_CATEGORY_BONUS = 0.25 (matches lib/pipeline/extraction.ts)
+        if (extracted.category === EventCategory.UNKNOWN && aiResult.category !== EventCategory.UNKNOWN) {
+          extracted.confidence = Math.min(1, Number((extracted.confidence + 0.25).toFixed(2)));
+        }
+        extracted.category = aiResult.category;
+        extracted.severity = aiResult.severity;
+        extracted.summary = aiResult.summary;
         extracted.signals.push({
           kind: "category",
           label: "ai:groq_extraction",
