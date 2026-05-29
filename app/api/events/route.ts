@@ -18,8 +18,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const severity = searchParams.get("severity");
   const country = searchParams.get("country");
 
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get("limit") ?? String(DEFAULT_LIMIT), 10)));
+  const rawPage = parseInt(searchParams.get("page") ?? "1", 10);
+  const page = Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage);
+  const rawLimit = parseInt(searchParams.get("limit") ?? String(DEFAULT_LIMIT), 10);
+  const limit = Math.min(MAX_LIMIT, Math.max(1, Number.isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit));
   const skip = (page - 1) * limit;
 
   const parsedCategory =
