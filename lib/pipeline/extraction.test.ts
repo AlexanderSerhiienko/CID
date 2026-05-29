@@ -116,6 +116,21 @@ describe("extractEventFromArticle", () => {
     expect(event.country).toBe("India");
   });
 
+  it("gives MEDIUM severity a lower confidence bonus than HIGH", () => {
+    const medium = extractEventFromArticle({
+      title: "Confirmed breach at hospital network in France",
+      rawText: "The breach was confirmed affecting hospital systems in France."
+    });
+    const high = extractEventFromArticle({
+      title: "Deaths reported after earthquake in Japan",
+      rawText: "Multiple deaths confirmed following major earthquake in Japan."
+    });
+
+    expect(medium.severity).toBe(Severity.MEDIUM);
+    expect(high.severity).toBe(Severity.HIGH);
+    expect(high.confidence).toBeGreaterThan(medium.confidence);
+  });
+
   it("does not classify firewall text as a wildfire", () => {
     const event = extractEventFromArticle({
       title: "CISA releases firewall hardening advisory",
