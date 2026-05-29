@@ -62,20 +62,23 @@ export function ReviewActions({
         }
       : undefined;
 
-    const response = await fetch("/api/admin/review", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-      body: JSON.stringify({ id: event.id, action, patch })
-    });
-    const result = await parseMutationResponse(response);
-    setIsLoading(false);
-
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    try {
+      const response = await fetch("/api/admin/review", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+        body: JSON.stringify({ id: event.id, action, patch })
+      });
+      const result = await parseMutationResponse(response);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    router.refresh();
   }
 
   async function merge(formData: FormData) {
@@ -83,20 +86,23 @@ export function ReviewActions({
     setError(null);
 
     const targetEventId = String(formData.get("targetEventId") ?? "");
-    const response = await fetch("/api/admin/review", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-      body: JSON.stringify({ id: event.id, action: "merge", targetEventId })
-    });
-    const result = await parseMutationResponse(response);
-    setIsLoading(false);
-
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    try {
+      const response = await fetch("/api/admin/review", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+        body: JSON.stringify({ id: event.id, action: "merge", targetEventId })
+      });
+      const result = await parseMutationResponse(response);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    router.refresh();
   }
 
   if (isMerging) {

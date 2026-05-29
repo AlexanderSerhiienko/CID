@@ -13,26 +13,27 @@ export function SourceForm() {
 
   async function submit(formData: FormData) {
     setError(null);
-    const response = await fetch("/api/sources", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-      body: JSON.stringify({
-        name: formData.get("name"),
-        url: formData.get("url"),
-        type: formData.get("type"),
-        enabled: true,
-        trustScore: Number(formData.get("trustScore"))
-      })
-    });
-
-    const result = await parseMutationResponse(response);
-
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    try {
+      const response = await fetch("/api/sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+        body: JSON.stringify({
+          name: formData.get("name"),
+          url: formData.get("url"),
+          type: formData.get("type"),
+          enabled: true,
+          trustScore: Number(formData.get("trustScore"))
+        })
+      });
+      const result = await parseMutationResponse(response);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Network error. Please check your connection and try again.");
     }
-
-    router.refresh();
   }
 
   return (
