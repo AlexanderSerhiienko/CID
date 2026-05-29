@@ -33,6 +33,26 @@ describe("mergeRiskEvent", () => {
     ).rejects.toThrow("Cannot merge event with status PUBLISHED");
   });
 
+  it("rejects merge when target event is REJECTED", async () => {
+    const tx = {
+      riskEvent: {
+        findUnique: async ({ where }: { where: { id: string } }) => {
+          if (where.id === "source") {
+            return { id: "source", status: EventStatus.NEEDS_REVIEW, confidence: 0.5, rawArticles: [] };
+          }
+          return { id: "rejected-target", status: EventStatus.REJECTED, confidence: 0.3, rawArticles: [] };
+        },
+        update: async () => ({})
+      },
+      rawArticle: { updateMany: async () => ({ count: 0 }) }
+    };
+    const prisma = { $transaction: async (cb: (t: typeof tx) => unknown) => cb(tx) };
+
+    await expect(
+      mergeRiskEvent({ prisma: prisma as never, sourceEventId: "source", targetEventId: "rejected-target" })
+    ).rejects.toThrow("Cannot merge into a REJECTED event");
+  });
+
   it("rejects self-merge", async () => {
     await expect(
       mergeRiskEvent({

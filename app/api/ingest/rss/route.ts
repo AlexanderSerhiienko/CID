@@ -33,16 +33,23 @@ export async function POST(request: NextRequest) {
   const useQueue = payload.data.queue || sources.length > 1;
 
   if (useQueue) {
-    const { ingestionQueue } = await import("@/lib/queue");
-    const jobs = await Promise.all(
-      sources.map((source) =>
-        ingestionQueue.add("ingest-source", { sourceId: source.id }, { jobId: `source:${source.id}` })
-      )
-    );
+    try {
+      const { ingestionQueue } = await import("@/lib/queue");
+      const jobs = await Promise.all(
+        sources.map((source) =>
+          ingestionQueue.add("ingest-source", { sourceId: source.id }, { jobId: `source:${source.id}` })
+        )
+      );
 
-    return NextResponse.json({
-      queued: jobs.map((job) => ({ id: job.id, sourceId: job.data.sourceId }))
-    });
+      return NextResponse.json({
+        queued: jobs.map((job) => ({ id: job.id, sourceId: job.data.sourceId }))
+      });
+    } catch {
+      return NextResponse.json(
+        { error: "Queue unavailable. Retry or use { sourceId } for single-source synchronous ingestion." },
+        { status: 503 }
+      );
+    }
   }
 
   // Single source — synchronous path is safe (no concurrency, no Vercel timeout risk).
