@@ -12,6 +12,16 @@ describe("jaccardSimilarity", () => {
       )
     ).toBeGreaterThan(0.2);
   });
+
+  it("returns 0 for two empty token sets — no false dedup on short-word-only titles", () => {
+    // All tokens are ≤ 2 chars and are filtered out, producing empty sets.
+    // Must return 0 (not similar), not 1 (identical).
+    expect(jaccardSimilarity("M 3.1 in US", "M 4.2 in UK")).toBe(0);
+  });
+
+  it("returns 0 for two empty strings", () => {
+    expect(jaccardSimilarity("", "")).toBe(0);
+  });
 });
 
 describe("isDuplicateCandidate", () => {
