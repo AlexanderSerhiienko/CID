@@ -97,9 +97,7 @@ export default async function ReviewPage({
                       <Badge tone="yellow">{event.severity}</Badge>
                       <Badge>{Math.round(event.confidence * 100)}% confidence</Badge>
                     </div>
-                    <Link href={`/events/${event.id}`} className="text-lg font-semibold">
-                      {event.title}
-                    </Link>
+                    <p className="text-lg font-semibold">{event.title}</p>
                     <p className="mt-2 max-w-4xl text-sm text-muted-foreground">{event.summary}</p>
                     <div className="mt-3 text-sm">
                       Location: {[event.city, event.country].filter(Boolean).join(", ") || "Unknown"} ·

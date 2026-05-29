@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { EventStatus } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
@@ -15,7 +16,7 @@ export default async function EventDetailPage({
   const now = new Date();
 
   const event = await prisma.riskEvent.findUnique({
-    where: { id },
+    where: { id, status: EventStatus.PUBLISHED },
     include: {
       rawArticles: {
         include: { source: true },
