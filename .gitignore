@@ -9,3 +9,4 @@ dist
 tsconfig.tsbuildinfo
 prisma/dev.db
 .vercel
+.claude/settings.local.json
