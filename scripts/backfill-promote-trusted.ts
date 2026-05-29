@@ -33,7 +33,10 @@ async function main() {
   }
 
   const result = await prisma.riskEvent.updateMany({
-    where: { id: { in: candidates.map((c) => c.id) } },
+    where: {
+      id: { in: candidates.map((c) => c.id) },
+      status: EventStatus.NEEDS_REVIEW  // re-check at write time to avoid TOCTOU race
+    },
     data: { status: EventStatus.PUBLISHED }
   });
 
