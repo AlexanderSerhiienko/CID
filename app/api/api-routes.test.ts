@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
       update: vi.fn()
     },
     riskEvent: {
-      update: vi.fn(),
+      updateMany: vi.fn(),
       findMany: vi.fn()
     }
   },
@@ -114,8 +114,7 @@ describe("protected API route contracts", () => {
   });
 
   it("approves a review event with a valid admin token", async () => {
-    const event = { id: "event-1", status: EventStatus.PUBLISHED };
-    mocks.prisma.riskEvent.update.mockResolvedValue(event);
+    mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 1 });
 
     const response = await reviewPatch(
       jsonRequest(
@@ -132,10 +131,10 @@ describe("protected API route contracts", () => {
       )
     );
 
-    await expect(response.json()).resolves.toEqual({ event });
+    await expect(response.json()).resolves.toEqual({ id: "event-1", status: EventStatus.PUBLISHED });
     expect(response.status).toBe(200);
-    expect(mocks.prisma.riskEvent.update).toHaveBeenCalledWith({
-      where: { id: "event-1" },
+    expect(mocks.prisma.riskEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: "event-1", status: EventStatus.NEEDS_REVIEW },
       data: {
         severity: Severity.HIGH,
         category: EventCategory.NATURAL_DISASTER,
