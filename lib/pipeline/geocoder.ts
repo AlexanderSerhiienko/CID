@@ -68,10 +68,12 @@ export async function geocodeLocation(query: string): Promise<GeocoderResult | n
     });
 
     if (!resp.ok) {
-      // Do not cache rate-limit responses — the location may resolve on the next call
-      // once the 1 req/sec window expires. Caching null here would permanently blacklist
-      // a valid location for the lifetime of the container.
-      if (resp.status === 429) return null;
+      // Do not cache transient errors — the server may recover and the location
+      // should be retried on the next ingestion run.
+      // 429: rate-limited — will succeed once the rate window expires.
+      // 5xx: server-side outage — will succeed once Nominatim recovers.
+      // Only cache definitive client errors (4xx except 429) as permanent nulls.
+      if (resp.status === 429 || resp.status >= 500) return null;
       cache.set(key, null);
       return null;
     }

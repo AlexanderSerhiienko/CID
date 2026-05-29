@@ -45,6 +45,10 @@ export async function mergeRiskEvent({
       );
     }
 
+    if (targetEvent.status === EventStatus.REJECTED) {
+      throw new Error("Cannot merge into a REJECTED event. Choose a PUBLISHED or NEEDS_REVIEW target.");
+    }
+
     const movedArticleIds = sourceEvent.rawArticles.map((article) => article.id);
 
     if (movedArticleIds.length > 0) {
