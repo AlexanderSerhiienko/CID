@@ -9,14 +9,15 @@ export function isAdminAuthConfigured() {
 export function isValidAdminToken(token: string | null | undefined) {
   const expectedToken = process.env.ADMIN_TOKEN?.trim();
 
-  // CRITICAL: when ADMIN_TOKEN is not set in production, deny all requests.
-  // Returning true here would open every mutation to the public.
+  // CRITICAL: when ADMIN_TOKEN is not set, only allow passthrough in local
+  // development (NODE_ENV === "development"). Any other environment — production,
+  // staging, preview, CI, test — must deny all requests to avoid accidentally
+  // leaving every admin endpoint open on a deployed server.
   if (!expectedToken) {
-    if (process.env.NODE_ENV === "production") {
-      return false;
+    if (process.env.NODE_ENV === "development") {
+      return true;
     }
-    // In development/test, allow passthrough so local dev works without config.
-    return true;
+    return false;
   }
 
   return token === expectedToken;

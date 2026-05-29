@@ -8,11 +8,23 @@ afterEach(() => {
 });
 
 describe("admin auth", () => {
-  it("allows mutations when admin auth is not configured", () => {
+  it("denies requests when admin auth is not configured in test/production env", () => {
+    // NODE_ENV=test in Vitest — passthrough is only allowed for NODE_ENV=development.
     delete process.env.ADMIN_TOKEN;
 
     expect(isAdminAuthConfigured()).toBe(false);
+    expect(isValidAdminToken(undefined)).toBe(false);
+  });
+
+  it("allows passthrough in development when admin auth is not configured", () => {
+    const original = process.env.NODE_ENV;
+    // NODE_ENV is read-only in TypeScript types but writable at runtime in Node/Vitest
+    (process.env as Record<string, string | undefined>).NODE_ENV = "development";
+    delete process.env.ADMIN_TOKEN;
+
     expect(isValidAdminToken(undefined)).toBe(true);
+
+    (process.env as Record<string, string | undefined>).NODE_ENV = original;
   });
 
   it("rejects missing token when admin auth is configured", () => {
