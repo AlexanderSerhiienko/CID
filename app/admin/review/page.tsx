@@ -43,10 +43,15 @@ export default async function ReviewPage({
         }
       }
     }),
+    // Merge suggestions are only meaningful for recent events. Use a 7-day window
+    // instead of a hard take:50 — the cap silently omits older events even when
+    // they are the best semantic match for a candidate being reviewed.
     prisma.riskEvent.findMany({
-      where: { status: { not: EventStatus.REJECTED } },
+      where: {
+        status: { not: EventStatus.REJECTED },
+        updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000) }
+      },
       orderBy: { updatedAt: "desc" },
-      take: 50,
       select: {
         id: true,
         title: true,
