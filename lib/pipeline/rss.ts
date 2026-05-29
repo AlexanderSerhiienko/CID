@@ -340,9 +340,21 @@ export async function ingestRssSource(sourceId: string) {
     if (!geoCoords) {
       const aiResult = await extractWithAIGuarded(title, rawText);
       if (aiResult) {
-        extracted.category = aiResult.category;
-        extracted.severity = aiResult.severity;
-        extracted.summary = aiResult.summary;
+        // Respect the AI's non-risk verdict — if Groq says this is not a risk event,
+        // override the rules-based classification and skip event creation.
+        if (!aiResult.isRiskEvent) {
+          extracted.isLikelyRiskEvent = false;
+        } else {
+          // If AI upgrades from UNKNOWN to a concrete category, apply the category
+          // confidence bonus that was missed when extraction ran with UNKNOWN.
+          // CONFIDENCE_CATEGORY_BONUS = 0.25 (matches lib/pipeline/extraction.ts)
+          if (extracted.category === EventCategory.UNKNOWN && aiResult.category !== EventCategory.UNKNOWN) {
+            extracted.confidence = Math.min(1, Number((extracted.confidence + 0.25).toFixed(2)));
+          }
+          extracted.category = aiResult.category;
+          extracted.severity = aiResult.severity;
+          extracted.summary = aiResult.summary;
+        }
         extracted.signals.push({
           kind: "category",
           label: "ai:groq_extraction",
