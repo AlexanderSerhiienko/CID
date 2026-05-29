@@ -29,10 +29,13 @@ function isEnabled(): boolean {
 
 async function rateLimit(): Promise<void> {
   const wait = RATE_LIMIT_MS - (Date.now() - lastCallAt);
+  // Set lastCallAt eagerly before the sleep so concurrent callers (worker concurrency > 1)
+  // see the updated timestamp immediately and don't both compute wait=0 and fire
+  // simultaneous requests, violating Nominatim's mandatory 1 req/sec policy.
+  lastCallAt = Date.now() + Math.max(0, wait);
   if (wait > 0) {
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
-  lastCallAt = Date.now();
 }
 
 /**
@@ -65,6 +68,10 @@ export async function geocodeLocation(query: string): Promise<GeocoderResult | n
     });
 
     if (!resp.ok) {
+      // Do not cache rate-limit responses — the location may resolve on the next call
+      // once the 1 req/sec window expires. Caching null here would permanently blacklist
+      // a valid location for the lifetime of the container.
+      if (resp.status === 429) return null;
       cache.set(key, null);
       return null;
     }
