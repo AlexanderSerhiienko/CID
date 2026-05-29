@@ -15,6 +15,18 @@ describe("createSourceSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("rejects IPv6 loopback URLs to prevent SSRF", () => {
+    const result = createSourceSchema.safeParse({
+      name: "IPv6 Feed",
+      url: "http://[::1]/rss.xml",
+      type: SourceType.RSS,
+      trustScore: 0.5,
+      enabled: true
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects private localhost URLs", () => {
     const result = createSourceSchema.safeParse({
       name: "Local Feed",
