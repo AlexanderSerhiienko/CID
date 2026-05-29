@@ -17,7 +17,8 @@ export default async function ReviewPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10));
+  const rawPage = parseInt(typeof params.page === "string" ? params.page : "1", 10);
+  const page = Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage);
   const skip = (page - 1) * PAGE_SIZE;
 
   const [events, total, officialCount, mergeTargets] = await Promise.all([
