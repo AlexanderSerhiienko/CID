@@ -36,10 +36,16 @@ export default async function EventsPage({
   const now = new Date();
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
-  const status = typeof params.status === "string" ? params.status : EventStatus.PUBLISHED;
+  // Whitelist — same guard as GET /api/events. Never expose non-PUBLISHED events publicly.
+  const ALLOWED_STATUSES: EventStatus[] = [EventStatus.PUBLISHED];
+  const rawStatus = typeof params.status === "string" ? params.status : "";
+  const status: EventStatus = ALLOWED_STATUSES.includes(rawStatus as EventStatus)
+    ? (rawStatus as EventStatus)
+    : EventStatus.PUBLISHED;
   const category = typeof params.category === "string" ? params.category : "";
   const severity = typeof params.severity === "string" ? params.severity : "";
-  const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10));
+  const rawPage = parseInt(typeof params.page === "string" ? params.page : "1", 10);
+  const page = Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage);
   const skip = (page - 1) * PAGE_SIZE;
 
   const parsedCategory =
