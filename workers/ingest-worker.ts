@@ -21,3 +21,14 @@ worker.on("failed", (job, error) => {
   console.error(`RSS ingestion job ${job?.id ?? "unknown"} failed`, error);
 });
 
+// Graceful shutdown: let the current job finish before the process exits.
+// Without this, docker stop / Kubernetes rolling deploy interrupts active jobs
+// and they stay locked in BullMQ until the lock expires (lockDuration).
+async function shutdown() {
+  console.log("Ingest worker shutting down...");
+  await worker.close();
+  process.exit(0);
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
