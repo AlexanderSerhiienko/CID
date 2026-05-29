@@ -45,7 +45,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       status: EventStatus.PUBLISHED,
       category: parsedCategory
     },
-    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ createdAt: "desc" }, { occurredAt: "desc" }],
     take: FEED_LIMIT,
     select: {
       id: true,
