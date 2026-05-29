@@ -19,10 +19,16 @@ export async function PATCH(
     return NextResponse.json({ error: payload.error.flatten() }, { status: 400 });
   }
 
-  const source = await prisma.source.update({
+  const result = await prisma.source.updateMany({
     where: { id },
     data: payload.data
   });
 
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Source not found." }, { status: 404 });
+  }
+
+  // Re-fetch to return the updated record (updateMany doesn't return the row)
+  const source = await prisma.source.findUnique({ where: { id } });
   return NextResponse.json({ source });
 }
