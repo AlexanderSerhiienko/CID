@@ -39,6 +39,12 @@ export async function mergeRiskEvent({
       throw new Error("Target event not found.");
     }
 
+    if (sourceEvent.status !== EventStatus.NEEDS_REVIEW) {
+      throw new Error(
+        `Cannot merge event with status ${sourceEvent.status}. Only NEEDS_REVIEW events can be merged.`
+      );
+    }
+
     const movedArticleIds = sourceEvent.rawArticles.map((article) => article.id);
 
     if (movedArticleIds.length > 0) {
