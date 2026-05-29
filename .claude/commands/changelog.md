@@ -38,7 +38,7 @@ Usage:
 - ...
 ```
 
-5. Ask: "Добавить это в CHANGELOG.md?"
+5. Ask: "Add this to CHANGELOG.md?"
 
 6. If user confirms, prepend the entry to CHANGELOG.md (create the file if it doesn't exist).
 

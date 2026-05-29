@@ -43,7 +43,7 @@ Usage: /decompose-issue <issue-number>
 - [ ] PR opened with Closes #NUMBER
 ```
 
-4. After printing the plan, ask: "Начинаем реализацию? (используй /issue-fix или скажи что менять)"
+4. After printing the plan, ask: "Ready to implement? (use /issue-fix or tell me what to change)"
 
 ## Constraints
 

@@ -33,7 +33,7 @@ Generate a pull request title and body from the current branch diff.
 Closes #NUMBER
 ```
 
-6. Print the title and body so the user can copy it, or ask: "Создать PR прямо сейчас?"
+6. Print the title and body so the user can copy it, or ask: "Create the PR now?"
 
 7. If user confirms, use the GitHub MCP `create_pull_request` tool with:
    - repo: AlexanderSerhiienko/CID
