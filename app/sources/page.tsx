@@ -48,7 +48,7 @@ export default async function SourcesPage() {
               <tr key={source.id}>
                 <td className="max-w-[360px] px-4 py-3">
                   <div className="font-medium">{source.name}</div>
-                  <a className="text-xs text-primary" href={source.url} target="_blank">
+                  <a className="text-xs text-primary" href={source.url} target="_blank" rel="noopener noreferrer">
                     {source.url}
                   </a>
                   {source.lastError && (
