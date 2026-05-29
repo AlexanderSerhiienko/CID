@@ -1,7 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatRelativeTime, hoursUntilNextDailyRun } from "./utils";
+import { formatDate, formatRelativeTime, hoursUntilNextDailyRun, stripHtml } from "./utils";
 
 const FIXED_NOW = new Date("2025-05-29T12:00:00Z");
+
+describe("stripHtml", () => {
+  it("removes HTML tags", () => {
+    expect(stripHtml("<p>Hello <strong>world</strong></p>")).toBe("Hello world");
+  });
+
+  it("decodes common HTML entities", () => {
+    expect(stripHtml("Hackers &amp; criminals")).toBe("Hackers & criminals");
+    expect(stripHtml("&lt;script&gt;")).toBe("<script>");
+    expect(stripHtml("&quot;quoted&quot;")).toBe('"quoted"');
+    expect(stripHtml("&apos;single&apos;")).toBe("'single'");
+    expect(stripHtml("word&nbsp;word")).toBe("word word");
+  });
+
+  it("decodes numeric character references", () => {
+    expect(stripHtml("&#8217;s")).toBe("’s"); // right single quotation mark
+    expect(stripHtml("&#x2019;s")).toBe("’s");
+  });
+
+  it("collapses whitespace", () => {
+    expect(stripHtml("  too   much   space  ")).toBe("too much space");
+  });
+});
 
 describe("formatRelativeTime", () => {
   it("returns 'just now' for <60s ago", () => {
