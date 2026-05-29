@@ -14,26 +14,29 @@ export function IngestButton({ sourceId }: { sourceId?: string }) {
   async function ingest() {
     setIsLoading(true);
     setMessage(null);
-    const response = await fetch("/api/ingest/rss", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-      body: JSON.stringify(sourceId ? { sourceId } : {})
-    });
-    const result = await parseMutationResponse(response);
-    setIsLoading(false);
-
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
+    try {
+      const response = await fetch("/api/ingest/rss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+        body: JSON.stringify(sourceId ? { sourceId } : {})
+      });
+      const result = await parseMutationResponse(response);
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      const results = Array.isArray(result.payload?.results) ? result.payload.results : [];
+      const okCount = results.filter((result: { ok: boolean }) => result.ok).length;
+      const errorCount = results.length - okCount;
+      setMessage(
+        `Ingested ${okCount} source${okCount === 1 ? "" : "s"}${errorCount ? `, ${errorCount} failed` : ""}.`
+      );
+      router.refresh();
+    } catch {
+      setMessage("Network error. Please check your connection and try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    const results = Array.isArray(result.payload?.results) ? result.payload.results : [];
-    const okCount = results.filter((result: { ok: boolean }) => result.ok).length;
-    const errorCount = results.length - okCount;
-    setMessage(
-      `Ingested ${okCount} source${okCount === 1 ? "" : "s"}${errorCount ? `, ${errorCount} failed` : ""}.`
-    );
-    router.refresh();
   }
 
   return (
@@ -63,23 +66,24 @@ export function SourceSettings({
   async function patch(payload: { enabled?: boolean; trustScore?: number }) {
     setIsLoading(true);
     setMessage(null);
-
-    const response = await fetch(`/api/sources/${sourceId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-      body: JSON.stringify(payload)
-    });
-
-    const result = await parseMutationResponse(response);
-
-    setIsLoading(false);
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
+    try {
+      const response = await fetch(`/api/sources/${sourceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+        body: JSON.stringify(payload)
+      });
+      const result = await parseMutationResponse(response);
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      setMessage("Updated.");
+      router.refresh();
+    } catch {
+      setMessage("Network error. Please check your connection and try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    setMessage("Updated.");
-    router.refresh();
   }
 
   return (
