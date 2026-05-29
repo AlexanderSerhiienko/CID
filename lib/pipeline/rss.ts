@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import { EventCategory } from "@prisma/client";
+import { EventCategory, EventStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { contentHash } from "@/lib/pipeline/hash";
 import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
@@ -201,7 +201,12 @@ export async function ingestRssSource(sourceId: string) {
     createdAt: Date;
   };
   const recentEvents: DedupEvent[] = await prisma.riskEvent.findMany({
-    where: { createdAt: { gte: fiveDaysAgo } },
+    where: {
+      createdAt: { gte: fiveDaysAgo },
+      // Exclude REJECTED and DRAFT events — linking new articles to dead events
+      // buries evidence silently and prevents it from reaching the review queue.
+      status: { in: [EventStatus.NEEDS_REVIEW, EventStatus.PUBLISHED] }
+    },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
