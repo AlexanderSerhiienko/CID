@@ -34,6 +34,22 @@ describe("risk map scale", () => {
     });
   });
 
+  it("never shows High label for a country with only MEDIUM events regardless of volume", () => {
+    // Regression for cap-at-0.58 off-by-one: riskColor(0.58) hits the High bucket
+    // because the Elevated bucket has exclusive upper bound (score < 0.58).
+    // Cap must be 0.57 so capped scores stay within the Elevated bucket.
+    const points = aggregateCountryRisk(
+      Array.from({ length: 5 }, () =>
+        event({ country: "A", severity: "MEDIUM", confidence: 1 })
+      )
+    );
+
+    expect(points[0].riskScore).toBeLessThanOrEqual(0.57);
+    expect(points[0].label).not.toBe("High");
+    expect(points[0].label).not.toBe("Severe");
+    expect(points[0].label).not.toBe("Critical");
+  });
+
   it("does not turn low-severity confidence into high visual risk", () => {
     const points = aggregateCountryRisk([
       event({ country: "A", severity: "LOW", confidence: 1 }),

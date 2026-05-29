@@ -116,7 +116,9 @@ function capRiskBySeverity(score: number, maxSeverity: number) {
   }
 
   if (maxSeverity <= severityWeights.MEDIUM) {
-    return Math.min(score, 0.58);
+    // Cap just below the "Elevated" bucket's upper boundary (exclusive max: 0.58)
+    // so the score never lands exactly on 0.58 and falls into the "High" bucket.
+    return Math.min(score, 0.57);
   }
 
   return score;
