@@ -1,3 +1,4 @@
+import { EventStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
@@ -7,7 +8,7 @@ export async function GET(
 ) {
   const { id } = await context.params;
   const event = await prisma.riskEvent.findUnique({
-    where: { id },
+    where: { id, status: EventStatus.PUBLISHED },
     include: {
       rawArticles: {
         include: {
