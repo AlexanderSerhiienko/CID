@@ -250,13 +250,19 @@ export async function ingestRssSource(sourceId: string) {
       }
     }
 
-    // Nominatim fallback: geocoder enforces its own 1 req/sec rate limit internally
+    // Nominatim: call when no GeoRSS and no city-level precision yet.
+    // country may already be set from the static dictionary (centroid coords),
+    // but Nominatim can refine to an actual city coordinate.
     let geocoderUsed = false;
-    if (!geoCoords && extracted.country === null && extracted.isLikelyRiskEvent) {
-      const geocoded = await geocodeLocation(title);
+    if (!geoCoords && extracted.city === null && extracted.isLikelyRiskEvent) {
+      const query = extracted.country
+        ? `${title}, ${extracted.country}`
+        : title;
+      const geocoded = await geocodeLocation(query);
       if (geocoded) {
         geocoderUsed = true;
-        extracted.country = geocoded.country;
+        // Trust existing static-dict country over Nominatim's country string
+        if (!extracted.country) extracted.country = geocoded.country;
         extracted.latitude = geocoded.lat;
         extracted.longitude = geocoded.lon;
         extracted.locationConfidence = Math.max(extracted.locationConfidence, geocoded.confidence);

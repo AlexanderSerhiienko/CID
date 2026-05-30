@@ -3,7 +3,7 @@
 import "leaflet/dist/leaflet.css";
 import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
 import type { Layer } from "leaflet";
-import { GeoJSON, MapContainer, TileLayer } from "react-leaflet";
+import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer } from "react-leaflet";
 import { feature } from "topojson-client";
 import countriesTopology from "world-atlas/countries-50m.json";
 import {
@@ -14,6 +14,13 @@ import {
 } from "@/lib/map/risk-scale";
 
 type CountryFeature = Feature<Geometry, { name?: string }>;
+
+const severityColor: Record<string, string> = {
+  CRITICAL: "#f87171",
+  HIGH:     "#ffb786",
+  MEDIUM:   "#fbbf24",
+  LOW:      "#4edea3",
+};
 
 /**
  * Normalize a polygon ring so no consecutive longitude jump exceeds 180°.
@@ -68,7 +75,13 @@ const countryFeatures: FeatureCollection<Geometry, { name?: string }> = {
 };
 
 export function EventMap({ events }: { events: MapRiskEvent[] }) {
-  const countries = riskLookup(events);
+  // City-level events get point markers; country-level events drive the choropleth.
+  const cityEvents = events.filter(
+    (e) => e.city !== null && e.latitude !== null && e.longitude !== null
+  );
+  const countryEvents = events.filter((e) => e.city === null);
+
+  const countries = riskLookup(countryEvents);
 
   return (
     <div className="relative h-full overflow-hidden">
@@ -87,11 +100,12 @@ export function EventMap({ events }: { events: MapRiskEvent[] }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
+
+        {/* Choropleth layer — country-level events only */}
         <GeoJSON
           data={countryFeatures}
           style={(country) => {
             const point = country ? countries.get(featureKey(country as CountryFeature)) : null;
-
             return {
               color: point ? "#f8fafc" : "#475569",
               fillColor: point?.color ?? "#1f2937",
@@ -102,7 +116,34 @@ export function EventMap({ events }: { events: MapRiskEvent[] }) {
           }}
           onEachFeature={(country, layer) => bindCountryPopup(country as CountryFeature, layer, countries)}
         />
+
+        {/* City-level point markers */}
+        {cityEvents.map((event) => (
+          <CircleMarker
+            key={event.id}
+            center={[event.latitude as number, event.longitude as number]}
+            radius={7}
+            pathOptions={{
+              color: "#0b0e15",
+              weight: 1.5,
+              fillColor: severityColor[event.severity] ?? "#8c909f",
+              fillOpacity: 0.9,
+            }}
+          >
+            <Popup>
+              <strong>{escapeHtml(event.city ?? "")}</strong>
+              {event.country ? `, ${escapeHtml(event.country)}` : ""}
+              <br />
+              <span style={{ color: severityColor[event.severity], fontWeight: 600 }}>
+                {event.severity}
+              </span>
+              {" · "}
+              <a href={`/events/${event.id}`}>{escapeHtml(event.title)}</a>
+            </Popup>
+          </CircleMarker>
+        ))}
       </MapContainer>
+
       <div className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-md border border-border bg-background/90 p-3 text-xs shadow-lg backdrop-blur">
         <div className="mb-2 font-medium text-foreground">Country risk</div>
         <div className="grid gap-1">
