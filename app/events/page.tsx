@@ -56,6 +56,7 @@ export default async function EventsPage({
     : EventStatus.PUBLISHED;
   const category = typeof params.category === "string" ? params.category : "";
   const severity = typeof params.severity === "string" ? params.severity : "";
+  const locatedOnly = params.located === "1";
   const rawPage = parseInt(typeof params.page === "string" ? params.page : "1", 10);
   const page = Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage);
   const skip = (page - 1) * PAGE_SIZE;
@@ -73,6 +74,7 @@ export default async function EventsPage({
     status: status as EventStatus,
     category: parsedCategory,
     severity: parsedSeverity,
+    ...(locatedOnly ? { NOT: { country: null } } : {}),
     OR: q
       ? [
           { title: { contains: q, mode: "insensitive" as const } },
@@ -101,6 +103,7 @@ export default async function EventsPage({
     if (status !== EventStatus.PUBLISHED) qs.set("status", status);
     if (category) qs.set("category", category);
     if (severity) qs.set("severity", severity);
+    if (locatedOnly) qs.set("located", "1");
     if (p > 1) qs.set("page", String(p));
     const str = qs.toString();
     return `/events${str ? `?${str}` : ""}`;
@@ -181,7 +184,17 @@ export default async function EventsPage({
         <button className="h-9 px-4 rounded bg-[#3b82f6] text-sm font-semibold text-white hover:opacity-90 transition-opacity">
           Filter
         </button>
-        {(q || parsedCategory || parsedSeverity) && (
+        <label className="h-9 flex items-center gap-2 px-3 rounded border border-[#2d2d2d] bg-[#1a1a1a] text-sm text-[#c2c6d6] cursor-pointer select-none hover:border-[#3b82f6] transition-colors">
+          <input
+            type="checkbox"
+            name="located"
+            value="1"
+            defaultChecked={locatedOnly}
+            className="accent-[#3b82f6]"
+          />
+          Located only
+        </label>
+        {(q || parsedCategory || parsedSeverity || locatedOnly) && (
           <Link
             href="/events"
             className="h-9 px-4 rounded border border-[#2d2d2d] text-sm text-[#c2c6d6] hover:border-[#424754] transition-colors flex items-center"
