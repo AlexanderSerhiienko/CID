@@ -79,11 +79,11 @@ This is a portfolio project demonstrating fullstack engineering + AI-native deve
 
 - **Framework:** Next.js 15 App Router, React 19, TypeScript
 - **Database:** PostgreSQL + Prisma ORM
-- **Queue:** BullMQ + Redis (ioredis)
+- **Queue:** In-process promise-chain queue (`lib/pipeline/ingest-queue.ts`)
 - **UI:** Tailwind CSS + shadcn/ui + Leaflet (choropleth risk map)
 - **Validation:** Zod
 - **Tests:** Vitest
-- **Infrastructure:** Docker Compose, GitHub Actions CI
+- **Infrastructure:** Docker Compose (PostgreSQL only), GitHub Actions CI
 - **Optional AI extraction:** Groq (gated with timeout and fallback)
 
 ---
@@ -201,7 +201,7 @@ docs/adr/               # Architecture Decision Records
 - **Server components by default** — only add `'use client'` when actually needed
 - **Business logic in `lib/`** — never put logic inside API route handlers
 - **No N+1 queries** — use Prisma `include` or batch with `findMany({ where: { id: { in: [...] } } })`
-- **BullMQ jobs** must have retry logic; external RSS fetches must have a timeout
+- **Ingest queue** is in-process (`enqueueIngest`) — serializes Groq calls; external RSS fetches must have a timeout
 
 ### Test priorities
 1. Pipeline logic — extraction, scoring, deduplication (pure functions, easy to test)
@@ -224,8 +224,8 @@ docs/adr/               # Architecture Decision Records
 - Ranked merge suggestions with reason text
 - Dashboard with Leaflet choropleth risk map (green/yellow/red by country)
 - Events table with filtering and detail pages
-- BullMQ queue + worker for async ingestion
-- Docker Compose (PostgreSQL on port 5433, Redis)
+- In-process ingest queue (`lib/pipeline/ingest-queue.ts`) — serializes sources, no Redis needed
+- Docker Compose (PostgreSQL on port 5433)
 - GitHub Actions CI (typecheck + test + lint + build)
 - Vitest unit tests for extraction, scoring, deduplication, merge, validation, admin auth
 
@@ -260,7 +260,7 @@ rawText → deterministic rules → [optional Groq] → Zod validation → fallb
 
 - `docs/adr/001` — AI-Assisted Engineering Workflow
 - `docs/adr/002` — Hybrid Extraction: Rules Before Groq
-- `docs/adr/003` — BullMQ For Ingestion Jobs
+- `docs/adr/003` — BullMQ For Ingestion Jobs (superseded — replaced by in-process queue)
 - `docs/adr/004` — First Vertical Slice Before Feature Expansion
 
 ---

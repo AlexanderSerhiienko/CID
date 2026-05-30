@@ -75,13 +75,11 @@ const countryFeatures: FeatureCollection<Geometry, { name?: string }> = {
 };
 
 export function EventMap({ events }: { events: MapRiskEvent[] }) {
-  // Precise coords (GeoRSS ≥0.9, Nominatim 0.75, city dict 0.85) → point marker.
-  // Country-centroid only (0.65) → choropleth fill.
-  const PRECISE_THRESHOLD = 0.75;
+  // Has coordinates → point marker. No coordinates → choropleth country fill.
   const preciseEvents = events.filter(
-    (e) => e.locationConfidence >= PRECISE_THRESHOLD && e.latitude !== null && e.longitude !== null
+    (e) => e.latitude !== null && e.longitude !== null
   );
-  const countryEvents = events.filter((e) => e.locationConfidence < PRECISE_THRESHOLD);
+  const countryEvents = events.filter((e) => e.latitude === null || e.longitude === null);
 
   const countries = riskLookup(countryEvents);
 

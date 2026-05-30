@@ -149,7 +149,9 @@ describe("extractEventFromArticle", () => {
       rawText: "Administrators should patch exploited vulnerabilities and review firewall rules."
     });
 
-    expect(event.category).toBe(EventCategory.UNKNOWN);
+    // patch + vulnerability → CYBER_ATTACK (correct); the test guards against NATURAL_DISASTER mis-classification
+    expect(event.category).not.toBe(EventCategory.NATURAL_DISASTER);
+    expect(event.category).toBe(EventCategory.CYBER_ATTACK);
   });
 
   it("filters obvious non-incident public health news", () => {
