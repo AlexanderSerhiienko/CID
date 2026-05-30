@@ -71,16 +71,17 @@ export function EventMap({ events }: { events: MapRiskEvent[] }) {
   const countries = riskLookup(events);
 
   return (
-    <div className="relative h-[460px] overflow-hidden rounded-md border border-border bg-card">
+    <div className="relative h-full overflow-hidden">
       <MapContainer
         center={[20, 0]}
         zoom={2}
         scrollWheelZoom
         maxBounds={[[-85, -220], [85, 220]]}
         maxBoundsViscosity={0.6}
-        minZoom={1}
+        minZoom={2}
         maxZoom={10}
-        className="h-full bg-slate-950"
+        className="h-full"
+        style={{ background: "#0b0e15" }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
