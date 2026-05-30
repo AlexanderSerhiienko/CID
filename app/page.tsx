@@ -2,7 +2,6 @@ import Link from "next/link";
 import { EventStatus, Severity } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { EventMapClient } from "@/components/event-map-client";
-import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db";
 import { formatRelativeTime, hoursUntilNextDailyRun } from "@/lib/utils";
 
@@ -14,10 +13,18 @@ const WINDOW_OPTIONS = [
   { label: "All time", value: "all", days: null }
 ] as const;
 
-function severityTone(severity: Severity) {
-  if (severity === Severity.CRITICAL || severity === Severity.HIGH) return "red" as const;
-  if (severity === Severity.MEDIUM) return "yellow" as const;
-  return "green" as const;
+function severityColor(severity: Severity) {
+  if (severity === Severity.CRITICAL) return "#ffb4ab";
+  if (severity === Severity.HIGH) return "#ffb786";
+  if (severity === Severity.MEDIUM) return "#4edea3";
+  return "#8c909f";
+}
+
+function severityClass(severity: Severity) {
+  if (severity === Severity.CRITICAL) return "severity-critical";
+  if (severity === Severity.HIGH) return "severity-high";
+  if (severity === Severity.MEDIUM) return "severity-medium";
+  return "severity-low";
 }
 
 function cutoffDate(days: number | null): Date | null {
@@ -41,7 +48,6 @@ export default async function DashboardPage({
 
   const cutoff = cutoffDate(windowOption.days);
 
-  // Filter by occurredAt when available; fall back to createdAt for legacy events (occurredAt null).
   const timeFilter = cutoff
     ? {
         OR: [
@@ -53,7 +59,7 @@ export default async function DashboardPage({
 
   const baseWhere = { status: EventStatus.PUBLISHED, ...timeFilter };
 
-  const [mapEvents, latestEvents, publishedCount, reviewCount, sourceCount, lastIngested, aiCount, geocoderCount] =
+  const [mapEvents, latestEvents, publishedCount, reviewCount, sourceCount, lastIngested] =
     await Promise.all([
       prisma.riskEvent.findMany({
         where: baseWhere,
@@ -72,127 +78,127 @@ export default async function DashboardPage({
         where: { enabled: true, lastIngestedAt: { not: null } },
         orderBy: { lastIngestedAt: "desc" },
         select: { lastIngestedAt: true }
-      }),
-      prisma.riskEvent.count({ where: { ...baseWhere, aiEnhanced: true } }),
-      prisma.riskEvent.count({ where: { ...baseWhere, geocoderUsed: true } })
+      })
     ]);
 
   const nextUpdateHours = hoursUntilNextDailyRun(now);
 
   return (
-    <div className="space-y-6">
-      <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-normal">Crisis Intelligence Dashboard</h1>
-          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-            Reviewed risk events from RSS and open-data sources. Raw material is extracted,
-            deduplicated, scored, reviewed, and only then published to the map.
-          </p>
-          {lastIngested?.lastIngestedAt && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Data last updated{" "}
-              <span className="font-medium text-foreground">
-                {formatRelativeTime(lastIngested.lastIngestedAt, now)}
-              </span>
-              {" · "}
-              Updated daily at 8am UTC · Next update in ~{nextUpdateHours}h
+    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
+      {/* Map area — 70% */}
+      <section className="flex-1 relative bg-[#0b0e15]">
+        <EventMapClient events={mapEvents} />
+        {/* Overlay info */}
+        <div className="absolute bottom-6 left-6 z-10 pointer-events-none">
+          <div className="surface-card rounded-lg p-4 backdrop-blur-sm bg-[#1a1a1a]/90 max-w-xs">
+            <p className="text-sm font-semibold text-[#e1e2ec]">Global Operations Overview</p>
+            <p className="text-xs text-[#c2c6d6] mt-0.5">
+              {lastIngested?.lastIngestedAt
+                ? `Updated ${formatRelativeTime(lastIngested.lastIngestedAt, now)} · next in ~${nextUpdateHours}h`
+                : "Live incident tracking enabled"}
             </p>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
-          <div className="rounded-md border border-border bg-card p-3">
-            <div className="text-2xl font-semibold">{publishedCount}</div>
-            <div className="text-muted-foreground">Published</div>
-          </div>
-          <div className="rounded-md border border-border bg-card p-3">
-            <div className="text-2xl font-semibold">{reviewCount}</div>
-            <div className="text-muted-foreground">Needs review</div>
-          </div>
-          <div className="rounded-md border border-border bg-card p-3">
-            <div className="text-2xl font-semibold">{sourceCount}</div>
-            <div className="text-muted-foreground">Sources</div>
-          </div>
-          <div className="rounded-md border border-border bg-card p-3">
-            <div className="text-2xl font-semibold">{aiCount}</div>
-            <div className="text-muted-foreground">AI-enhanced</div>
-          </div>
-          <div className="rounded-md border border-border bg-card p-3">
-            <div className="text-2xl font-semibold">{geocoderCount}</div>
-            <div className="text-muted-foreground">Geocoded</div>
           </div>
         </div>
       </section>
 
-      {/* Time window filter */}
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-muted-foreground">Showing:</span>
-        {WINDOW_OPTIONS.map((opt) => (
-          <Link
-            key={opt.value}
-            href={opt.value === "30d" ? "/" : `/?window=${opt.value}`}
-            className={
-              windowOption.value === opt.value
-                ? "rounded-md border border-border bg-card px-3 py-1.5 font-medium text-foreground shadow-sm"
-                : "rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted"
-            }
-          >
-            {opt.label}
-          </Link>
-        ))}
-        {mapEvents.length > 0 && (
-          <span className="ml-2 text-muted-foreground">
-            · {mapEvents.length} event{mapEvents.length === 1 ? "" : "s"}
-          </span>
-        )}
-      </div>
+      {/* Sidebar — 30% */}
+      <aside className="w-80 xl:w-96 flex flex-col surface-card border-l border-[#2d2d2d] overflow-hidden bg-[#1a1a1a]">
+        {/* Time window filter */}
+        <div className="px-4 pt-4 pb-3 border-b border-[#2d2d2d] flex items-center gap-1.5">
+          {WINDOW_OPTIONS.map((opt) => (
+            <Link
+              key={opt.value}
+              href={opt.value === "30d" ? "/" : `/?window=${opt.value}`}
+              className={
+                windowOption.value === opt.value
+                  ? "px-3 py-1 rounded-full text-xs font-semibold bg-[#3b82f6] text-white"
+                  : "px-3 py-1 rounded-full text-xs font-semibold border border-[#2d2d2d] text-[#c2c6d6] hover:border-[#3b82f6] hover:text-[#3b82f6] transition-colors"
+              }
+            >
+              {opt.label}
+            </Link>
+          ))}
+        </div>
 
-      {latestEvents.length > 0 ? (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-          <EventMapClient events={mapEvents} />
-          <section className="max-h-[460px] overflow-hidden rounded-md border border-border bg-card">
-            <div className="border-b border-border px-4 py-3">
-              <h2 className="font-semibold">Latest events · {windowOption.label.toLowerCase()}</h2>
+        {/* Quick Stats */}
+        <div className="p-4 border-b border-[#2d2d2d]">
+          <h2 className="text-sm font-semibold text-[#e1e2ec] mb-3">Quick Stats</h2>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-[#191b23] border border-[#2d2d2d] rounded p-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Published</div>
+              <div className="text-xl font-semibold text-[#3b82f6]">{publishedCount}</div>
             </div>
-            <div className="max-h-[408px] divide-y divide-border overflow-y-auto">
+            <div className="bg-[#191b23] border border-[#2d2d2d] rounded p-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Review</div>
+              <div className="text-xl font-semibold text-[#ffb786]">{reviewCount}</div>
+            </div>
+            <div className="bg-[#191b23] border border-[#2d2d2d] rounded p-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Sources</div>
+              <div className="text-xl font-semibold text-[#e1e2ec]">{sourceCount}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Events */}
+        <div className="flex-1 flex flex-col min-h-0 p-4">
+          <div className="flex items-center justify-between mb-3 shrink-0">
+            <h2 className="text-sm font-semibold text-[#e1e2ec]">
+              Recent Events
+              <span className="ml-2 text-[10px] font-normal text-[#8c909f] uppercase tracking-widest">
+                {windowOption.label}
+              </span>
+            </h2>
+            <Link
+              href="/events"
+              className="text-xs text-[#3b82f6] hover:underline"
+            >
+              View all →
+            </Link>
+          </div>
+
+          {latestEvents.length > 0 ? (
+            <div className="space-y-1.5 overflow-y-auto flex-1">
               {latestEvents.map((event) => (
-                <Link key={event.id} href={`/events/${event.id}`} className="block p-4 hover:bg-muted">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="line-clamp-2 text-sm font-medium">{event.title}</h3>
-                      <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
-                        {event.summary}
-                      </p>
-                    </div>
-                    <div className="shrink-0">
-                      <Badge tone={severityTone(event.severity)}>{event.severity}</Badge>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{formatRelativeTime(event.occurredAt ?? event.createdAt, now)}</span>
-                    <span>·</span>
-                    <span>
-                      {[event.city, event.country].filter(Boolean).join(", ") || "Location pending"}
+                <Link
+                  key={event.id}
+                  href={`/events/${event.id}`}
+                  className="block p-3 rounded border border-[#2d2d2d] bg-[#191b23] hover:border-[#424754] hover:bg-[#272a31] transition-all duration-200"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <h3 className="text-xs font-semibold text-[#e1e2ec] line-clamp-2 leading-snug">
+                      {event.title}
+                    </h3>
+                    <span
+                      className={`shrink-0 text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded border ${severityClass(event.severity)}`}
+                    >
+                      {event.severity}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-[#8c909f]">
+                    <span style={{ color: severityColor(event.severity) }}>●</span>
+                    <span>{formatRelativeTime(event.occurredAt ?? event.createdAt, now)}</span>
+                    {(event.city || event.country) && (
+                      <>
+                        <span>·</span>
+                        <span>{[event.city, event.country].filter(Boolean).join(", ")}</span>
+                      </>
+                    )}
                   </div>
                 </Link>
               ))}
             </div>
-          </section>
+          ) : (
+            <EmptyState
+              title="No events yet"
+              detail={
+                windowOption.value === "all"
+                  ? "Seed sources, run ingestion, then approve candidates."
+                  : "Try expanding the time window."
+              }
+            />
+          )}
         </div>
-      ) : (
-        <EmptyState
-          title={
-            windowOption.value === "all"
-              ? "No published events yet"
-              : `No events in the ${windowOption.label.toLowerCase()}`
-          }
-          detail={
-            windowOption.value === "all"
-              ? "Seed sources, run RSS ingestion, then approve candidate events from the review queue."
-              : "Try expanding the time window to see older events."
-          }
-        />
-      )}
+      </aside>
     </div>
   );
 }

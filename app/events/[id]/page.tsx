@@ -36,7 +36,7 @@ export default async function EventDetailPage({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
       <div>
         <Link href="/events" className="text-sm text-muted-foreground hover:text-foreground">
           ← Back to events

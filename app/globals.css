@@ -1,28 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-  --background: 42 20% 97%;
-  --foreground: 210 16% 13%;
-  --card: 0 0% 100%;
-  --card-foreground: 210 16% 13%;
-  --muted: 200 16% 91%;
-  --muted-foreground: 210 9% 38%;
-  --border: 210 12% 84%;
-  --primary: 196 76% 30%;
-  --primary-foreground: 0 0% 100%;
-  --destructive: 356 68% 44%;
-}
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  color-scheme: dark;
+}
+
 body {
   min-height: 100vh;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: #0a0a0a;
+  color: #e1e2ec;
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -30,8 +26,43 @@ a {
   text-decoration: none;
 }
 
+/* Surface card utility */
+.surface-card {
+  background-color: #1a1a1a;
+  border: 1px solid #2d2d2d;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #424754;
+  border-radius: 20px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #8c909f;
+}
+
+/* Leaflet */
 .leaflet-container {
   height: 100%;
   width: 100%;
+  background: #0a0a0a;
 }
 
+/* Severity chip colors */
+.severity-critical { color: #ffb4ab; background-color: #ffb4ab1a; border-color: #ffb4ab4d; }
+.severity-high     { color: #ffb786; background-color: #ffb7861a; border-color: #ffb7864d; }
+.severity-medium   { color: #4edea3; background-color: #4edea31a; border-color: #4edea34d; }
+.severity-low      { color: #8c909f; background-color: #8c909f1a; border-color: #8c909f4d; }
+
+/* Status chip colors */
+.status-published    { color: #4edea3; background-color: #4edea31a; border-color: #4edea333; }
+.status-needs-review { color: #ffb786; background-color: #ffb7861a; border-color: #ffb78633; }
+.status-rejected     { color: #ffb4ab; background-color: #ffb4ab1a; border-color: #ffb4ab33; }
+.status-draft        { color: #8c909f; background-color: #8c909f1a; border-color: #8c909f33; }

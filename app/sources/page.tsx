@@ -16,7 +16,7 @@ export default async function SourcesPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-7xl mx-auto px-6 py-8 space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Sources</h1>
