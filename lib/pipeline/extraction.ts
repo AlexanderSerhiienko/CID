@@ -1,5 +1,6 @@
 import { EventCategory, Severity } from "@prisma/client";
 import { stripHtml } from "@/lib/utils";
+import { countryCentroids } from "@/lib/map/country-centroids";
 
 const CITY_MATCH_CONFIDENCE = 0.85;
 const COUNTRY_MATCH_CONFIDENCE = 0.65;
@@ -74,61 +75,13 @@ const categoryRules: Array<{ category: EventCategory; keywords: string[] }> = [
   }
 ];
 
-const knownLocations: Array<{
-  country: string;
-  city: string | null;
-  latitude: number;
-  longitude: number;
-  aliases: string[];
-}> = [
-  { country: "Argentina", city: null, latitude: -38.4161, longitude: -63.6167, aliases: ["argentina", "patagonia"] },
-  { country: "United States", city: "New York", latitude: 40.7128, longitude: -74.006, aliases: ["new york", "nyc"] },
-  { country: "United States", city: null, latitude: 39.8283, longitude: -98.5795, aliases: ["united states", "u.s.", "usa"] },
-  { country: "Japan", city: "Tokyo", latitude: 35.6762, longitude: 139.6503, aliases: ["tokyo"] },
-  { country: "Japan", city: null, latitude: 36.2048, longitude: 138.2529, aliases: ["japan"] },
-  { country: "France", city: "Paris", latitude: 48.8566, longitude: 2.3522, aliases: ["paris"] },
-  { country: "France", city: null, latitude: 46.2276, longitude: 2.2137, aliases: ["france"] },
-  { country: "Ukraine", city: "Kyiv", latitude: 50.4501, longitude: 30.5234, aliases: ["kyiv", "kiev"] },
-  { country: "Ukraine", city: null, latitude: 48.3794, longitude: 31.1656, aliases: ["ukraine"] },
-  { country: "Brazil", city: "Sao Paulo", latitude: -23.5558, longitude: -46.6396, aliases: ["sao paulo", "são paulo"] },
-  { country: "Brazil", city: null, latitude: -14.235, longitude: -51.9253, aliases: ["brazil"] },
-  { country: "India", city: "New Delhi", latitude: 28.6139, longitude: 77.209, aliases: ["new delhi", "delhi"] },
-  { country: "India", city: null, latitude: 20.5937, longitude: 78.9629, aliases: ["india"] },
-  { country: "Russian Federation", city: "Moscow", latitude: 55.7558, longitude: 37.6173, aliases: ["moscow"] },
-  { country: "Russian Federation", city: null, latitude: 61.524, longitude: 105.3188, aliases: ["russian federation", "russia"] },
-  { country: "Zambia", city: "Lusaka", latitude: -15.3875, longitude: 28.3228, aliases: ["lusaka"] },
-  { country: "Zambia", city: null, latitude: -13.1339, longitude: 27.8493, aliases: ["zambia"] },
-  { country: "Mexico", city: "Mexico City", latitude: 19.4326, longitude: -99.1332, aliases: ["mexico city"] },
-  { country: "Mexico", city: null, latitude: 23.6345, longitude: -102.5528, aliases: ["mexico"] },
-  { country: "Australia", city: "Canberra", latitude: -35.2809, longitude: 149.13, aliases: ["canberra"] },
-  { country: "Australia", city: null, latitude: -25.2744, longitude: 133.7751, aliases: ["australia"] },
-  { country: "Madagascar", city: null, latitude: -18.7669, longitude: 46.8691, aliases: ["madagascar"] },
-  { country: "Venezuela", city: null, latitude: 6.4238, longitude: -66.5897, aliases: ["venezuela"] },
-  { country: "Syrian Arab Republic", city: null, latitude: 34.8021, longitude: 38.9968, aliases: ["syrian arab republic", "syria"] },
-  { country: "Sudan", city: null, latitude: 12.8628, longitude: 30.2176, aliases: ["sudan"] },
-  { country: "South Sudan", city: null, latitude: 6.877, longitude: 31.307, aliases: ["south sudan"] },
-  { country: "Afghanistan", city: null, latitude: 33.9391, longitude: 67.71, aliases: ["afghanistan"] },
-  { country: "Pakistan", city: null, latitude: 30.3753, longitude: 69.3451, aliases: ["pakistan"] },
-  { country: "Iran", city: null, latitude: 32.4279, longitude: 53.688, aliases: ["iran"] },
-  { country: "Bangladesh", city: null, latitude: 23.685, longitude: 90.3563, aliases: ["bangladesh"] },
-  { country: "Bahamas", city: null, latitude: 25.0343, longitude: -77.3963, aliases: ["bahamas", "the bahamas"] },
-  { country: "Mozambique", city: null, latitude: -18.6657, longitude: 35.5296, aliases: ["mozambique"] },
-  { country: "Indonesia", city: null, latitude: -0.7893, longitude: 113.9213, aliases: ["indonesia"] },
-  { country: "Tonga", city: null, latitude: -21.179, longitude: -175.1982, aliases: ["tonga"] },
-  { country: "Philippines", city: null, latitude: 12.8797, longitude: 121.774, aliases: ["philippines"] },
-  { country: "Ecuador", city: null, latitude: -1.8312, longitude: -78.1834, aliases: ["ecuador", "galapagos"] },
-  { country: "Nicaragua", city: null, latitude: 12.8654, longitude: -85.2072, aliases: ["nicaragua"] },
-  { country: "Bolivia", city: null, latitude: -16.2902, longitude: -63.5887, aliases: ["bolivia"] },
-  { country: "Honduras", city: null, latitude: 15.2, longitude: -86.2419, aliases: ["honduras"] },
-  { country: "China", city: null, latitude: 35.8617, longitude: 104.1954, aliases: ["china"] },
-  { country: "Malaysia", city: null, latitude: 4.2105, longitude: 101.9758, aliases: ["malaysia"] },
-  { country: "Lebanon", city: null, latitude: 33.8547, longitude: 35.8623, aliases: ["lebanon"] },
-  { country: "Tajikistan", city: null, latitude: 38.861, longitude: 71.2761, aliases: ["tajikistan"] },
-  { country: "Turkmenistan", city: null, latitude: 38.9697, longitude: 59.5563, aliases: ["turkmenistan"] },
-  { country: "Democratic Republic of the Congo", city: null, latitude: -4.0383, longitude: 21.7587, aliases: ["democratic republic of the congo", "dr congo", "drc"] },
-  { country: "Uganda", city: null, latitude: 1.3733, longitude: 32.2903, aliases: ["uganda"] },
-  { country: "Spain", city: "Tenerife", latitude: 28.2916, longitude: -16.6291, aliases: ["tenerife"] }
-];
+const knownLocations = countryCentroids.map((c) => ({
+  country: c.country,
+  city: c.city ?? null,
+  latitude: c.latitude,
+  longitude: c.longitude,
+  aliases: c.aliases
+}));
 
 const riskSignalKeywords = [
   "alert",
