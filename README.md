@@ -161,43 +161,13 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-Run the optional BullMQ ingestion worker in another terminal:
-
-```bash
-npm run worker:ingest
-```
-
-Backfill locations for existing local events after improving extraction rules:
-
-```bash
-npm run events:backfill-locations
-```
-
-Backfill statuses for existing local events after changing auto-publish rules:
-
-```bash
-npm run events:backfill-statuses
-```
-
-Move low/medium events that were auto-published before the stricter rule back to review:
-
-```bash
-npm run events:demote-low-auto-published
-```
-
-Reprocess raw articles that were saved before extraction rules improved:
-
-```bash
-npm run events:backfill-from-raw
-```
-
-The RSS ingestion API can run synchronously for MVP demos or enqueue jobs for the worker:
+Trigger ingestion manually:
 
 ```bash
 curl -X POST http://localhost:3000/api/ingest/rss \
   -H "Content-Type: application/json" \
   -H "x-admin-token: dev-admin-token" \
-  -d '{"queue": true}'
+  -d '{}'
 ```
 
 ## Verification

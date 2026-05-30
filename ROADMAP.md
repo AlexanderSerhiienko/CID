@@ -57,7 +57,6 @@ auto-publish threshold is too strict. These items fix that.
 
 - [x] `occurredAt DateTime?` field on `RiskEvent` (migration applied to production)
 - [x] Pipeline populates it from the triggering article's `publishedAt`
-- [x] `npm run events:backfill-occurred-at` — 205 events updated on production
 - [x] Dashboard map time filter: Last 7 days / Last 30 days / All time (default: 30d)
 - [x] Filter applies to both choropleth and sidebar event list
 - [x] Events table date column uses `occurredAt` when available
@@ -69,7 +68,6 @@ auto-publish threshold is too strict. These items fix that.
 - [x] `OFFICIAL_FEED` sources auto-publish at MEDIUM+ severity, confidence ≥ 0.6
 - [x] `POST /api/admin/bulk-approve` endpoint (admin-protected)
 - [x] "Approve all trusted sources (N)" button in review queue
-- [x] `npm run events:promote-trusted` — 57 events promoted on production
 - [x] 3 new scoring unit tests covering the OFFICIAL_FEED path
 
 ---

@@ -1,39 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import IORedis from "ioredis";
 
 export async function GET() {
   const checks: Record<string, "ok" | "error"> = {};
 
-  // Database check
   try {
     await prisma.$queryRaw`SELECT 1`;
     checks.db = "ok";
   } catch {
     checks.db = "error";
-  }
-
-  // Redis check
-  {
-    const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-    const isTls = redisUrl.startsWith("rediss://");
-    const redis = new IORedis(redisUrl, {
-      maxRetriesPerRequest: 1,
-      connectTimeout: 3000,
-      lazyConnect: true,
-      tls: isTls ? {} : undefined
-    });
-    try {
-      await redis.connect();
-      await redis.ping();
-      checks.redis = "ok";
-    } catch {
-      checks.redis = "error";
-    } finally {
-      // Always disconnect — if ping() threw after connect() the connection
-      // would otherwise leak on the Redis server side until its idle timeout.
-      await redis.quit().catch(() => {});
-    }
   }
 
   const allOk = Object.values(checks).every((v) => v === "ok");
