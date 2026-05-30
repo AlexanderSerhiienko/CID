@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { enqueueIngest } from "@/lib/pipeline/ingest-queue";
+import { ingestSourcesWithTimeLimit, getContinueUrl } from "@/lib/pipeline/timed-ingest";
 
-// Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
 function isCronAuthorized(request: NextRequest): boolean {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) return false;
@@ -15,23 +14,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const sources = await prisma.source.findMany({ where: { enabled: true } });
+  const sources = await prisma.source.findMany({
+    where: { enabled: true },
+    select: { id: true }
+  });
+  const sourceIds = sources.map((s) => s.id);
 
-  const results = await Promise.all(
-    sources.map(async (source) => {
-      try {
-        const result = await enqueueIngest(source.id);
-        return { sourceId: source.id, sourceName: source.name, ok: true, result };
-      } catch (error) {
-        return {
-          sourceId: source.id,
-          sourceName: source.name,
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error"
-        };
-      }
-    })
-  );
+  const { processed, remaining, results } = await ingestSourcesWithTimeLimit(sourceIds);
 
-  return NextResponse.json({ results, runAt: new Date().toISOString() });
+  if (remaining.length > 0) {
+    const cronSecret = process.env.CRON_SECRET!;
+    fetch(getContinueUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cronSecret}`
+      },
+      body: JSON.stringify({ sourceIds: remaining })
+    }).catch(() => {
+      // fire-and-forget — failure is non-fatal, next cron run will catch skipped sources
+    });
+  }
+
+  return NextResponse.json({ processed, remaining, results, runAt: new Date().toISOString() });
 }
