@@ -75,11 +75,13 @@ const countryFeatures: FeatureCollection<Geometry, { name?: string }> = {
 };
 
 export function EventMap({ events }: { events: MapRiskEvent[] }) {
-  // City-level events get point markers; country-level events drive the choropleth.
-  const cityEvents = events.filter(
-    (e) => e.city !== null && e.latitude !== null && e.longitude !== null
+  // Precise coords (GeoRSS ≥0.9, Nominatim 0.75, city dict 0.85) → point marker.
+  // Country-centroid only (0.65) → choropleth fill.
+  const PRECISE_THRESHOLD = 0.75;
+  const preciseEvents = events.filter(
+    (e) => e.locationConfidence >= PRECISE_THRESHOLD && e.latitude !== null && e.longitude !== null
   );
-  const countryEvents = events.filter((e) => e.city === null);
+  const countryEvents = events.filter((e) => e.locationConfidence < PRECISE_THRESHOLD);
 
   const countries = riskLookup(countryEvents);
 
@@ -117,8 +119,8 @@ export function EventMap({ events }: { events: MapRiskEvent[] }) {
           onEachFeature={(country, layer) => bindCountryPopup(country as CountryFeature, layer, countries)}
         />
 
-        {/* City-level point markers */}
-        {cityEvents.map((event) => (
+        {/* Precise-coordinate point markers (GeoRSS / Nominatim / city dict) */}
+        {preciseEvents.map((event) => (
           <CircleMarker
             key={event.id}
             center={[event.latitude as number, event.longitude as number]}
@@ -131,7 +133,11 @@ export function EventMap({ events }: { events: MapRiskEvent[] }) {
             }}
           >
             <Popup>
-              <strong>{escapeHtml(event.city ?? "")}</strong>
+              <strong>
+                {event.city
+                  ? escapeHtml(event.city)
+                  : `${(event.latitude as number).toFixed(2)}°, ${(event.longitude as number).toFixed(2)}°`}
+              </strong>
               {event.country ? `, ${escapeHtml(event.country)}` : ""}
               <br />
               <span style={{ color: severityColor[event.severity], fontWeight: 600 }}>

@@ -8,6 +8,7 @@ export type MapRiskEvent = {
   city: string | null;
   latitude: number | null;
   longitude: number | null;
+  locationConfidence: number;
 };
 
 export type CountryRiskPoint = {
