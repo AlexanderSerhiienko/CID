@@ -9,12 +9,6 @@
       "autoPort": true
     },
     {
-      "name": "Ingest Worker (BullMQ)",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "worker:ingest"],
-      "autoPort": true
-    },
-    {
       "name": "MCP Server (stdio)",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "mcp"],

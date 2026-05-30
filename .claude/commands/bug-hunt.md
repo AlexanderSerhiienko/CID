@@ -12,7 +12,6 @@ Scan the CID codebase for real, concrete bugs and create GitHub Issues for each 
 
 ## Skip these explicitly
 
-- Anything in `scripts/` — backfill and migration scripts are one-off tools, not production code
 - Cosmetic security hardening: `rel="noopener"`, CSP headers, `SameSite` cookies, `X-Frame-Options` — these are hygiene, not bugs
 - Issues already filed: before creating any issue, check existing open GitHub issues and skip if the same root cause is already tracked
 
@@ -23,7 +22,7 @@ If the same root cause appears in multiple files (e.g. NaN pagination in three d
 ## What to look for
 
 ### 1. Silent failures / swallowed errors
-Look in lib/pipeline/, workers/, app/api/ for:
+Look in lib/pipeline/, app/api/ for:
 - catch blocks that log but return a value that callers treat as success
 - async functions where a thrown error would leave DB state inconsistent
 - Missing error handling on external calls (RSS fetch, Prisma queries outside transactions)
@@ -54,7 +53,6 @@ Only flag if the gap is in a critical path (pipeline, dedup, scoring, merge) and
    - lib/pipeline/scoring.ts
    - lib/pipeline/deduplication.ts
    - lib/review/merge.ts
-   - workers/ingest-worker.ts
    - app/api/ingest/rss/route.ts
    - app/api/admin/review/route.ts
 

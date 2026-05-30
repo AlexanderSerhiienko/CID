@@ -93,10 +93,9 @@ This is a portfolio project demonstrating fullstack engineering + AI-native deve
 ```bash
 # Development
 npm run dev                        # Start Next.js dev server
-npm run worker:ingest              # Start BullMQ ingestion worker (separate terminal)
 
 # Database
-docker compose up -d               # Start PostgreSQL + Redis
+docker compose up -d               # Start PostgreSQL
 npx prisma migrate dev             # Run migrations
 npm run prisma:seed                # Seed 10 official/open-data sources
 
@@ -106,11 +105,6 @@ npm run test                       # vitest run
 npm run lint                       # eslint
 npm run build                      # production build
 
-# Backfill scripts (run after rule changes)
-npm run events:backfill-locations  # Re-extract locations for existing events
-npm run events:backfill-statuses   # Re-apply auto-publish rules
-npm run events:backfill-from-raw   # Reprocess raw articles with updated extraction
-npm run events:demote-low-auto-published  # Move low-severity events back to review
 ```
 
 ---
@@ -146,17 +140,12 @@ lib/
   map/
     risk-scale.ts       # Country risk level aggregation for choropleth
   db.ts                 # Prisma client singleton
-  queue.ts              # BullMQ queue setup
   utils.ts
-
-workers/
-  ingest-worker.ts      # BullMQ worker — processes ingestion jobs
 
 components/             # React components (shadcn/ui based)
 prisma/
   schema.prisma         # Source, RawArticle, RiskEvent models
   seed.ts               # 10 pre-configured sources
-scripts/                # One-off backfill scripts
 docs/adr/               # Architecture Decision Records
 ```
 
