@@ -81,6 +81,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         updatedAt: true,
         sourceUrl: true,
         signals: true,
+        extractionSource: true,
+        aiEnhanced: true,
+        geocoderUsed: true,
         _count: { select: { rawArticles: true } }
       }
     }),

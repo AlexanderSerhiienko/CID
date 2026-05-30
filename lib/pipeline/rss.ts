@@ -255,9 +255,11 @@ export async function ingestRssSource(sourceId: string) {
     }
 
     // Nominatim fallback: geocoder enforces its own 1 req/sec rate limit internally
+    let geocoderUsed = false;
     if (!geoCoords && extracted.country === null && extracted.isLikelyRiskEvent) {
       const geocoded = await geocodeLocation(title);
       if (geocoded) {
+        geocoderUsed = true;
         extracted.country = geocoded.country;
         extracted.latitude = geocoded.lat;
         extracted.longitude = geocoded.lon;
@@ -337,6 +339,8 @@ export async function ingestRssSource(sourceId: string) {
     // AI enhancement: guarded by circuit breaker to avoid stalling on Groq outages.
     // Only runs for new risk events — duplicates are handled above without AI.
     // Skipped for GeoRSS feeds — coordinates are already precise.
+    let aiEnhanced = false;
+    const extractionSource = geoCoords ? "georss" : "rules";
     if (!geoCoords) {
       const aiResult = await extractWithAIGuarded(title, rawText);
       if (aiResult) {
@@ -376,6 +380,7 @@ export async function ingestRssSource(sourceId: string) {
           detail: `Category and severity refined by Groq (${GROQ_MODEL}).`,
           weight: 0.1
         });
+        aiEnhanced = true;
       }
     }
 
@@ -417,7 +422,10 @@ export async function ingestRssSource(sourceId: string) {
           signals: [...extracted.signals, ...scored.signals],
           sourceUrl: itemUrl,
           occurredAt: publishedAt ?? undefined,
-          rawArticles: { connect: { id: article.id } }
+          rawArticles: { connect: { id: article.id } },
+          extractionSource,
+          aiEnhanced,
+          geocoderUsed
         }
       });
     });

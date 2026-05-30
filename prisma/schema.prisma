@@ -89,6 +89,9 @@ model RiskEvent {
   signals            Json          @default("[]")
   sourceUrl          String
   occurredAt         DateTime?     // earliest publishedAt from associated RawArticles; null if unknown
+  extractionSource   String        @default("rules") // "rules" | "ai" | "georss"
+  aiEnhanced         Boolean       @default(false)
+  geocoderUsed       Boolean       @default(false)
   rawArticles        RawArticle[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
