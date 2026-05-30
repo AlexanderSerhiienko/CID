@@ -84,7 +84,7 @@ export default async function DashboardPage({
   const nextUpdateHours = hoursUntilNextDailyRun(now);
 
   return (
-    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
+    <div className="flex h-[calc(100vh-56px)] overflow-hidden max-w-[1600px] mx-auto w-full">
       {/* Map area — 70% */}
       <section className="flex-1 relative bg-[#0b0e15]">
         <EventMapClient events={mapEvents} />
