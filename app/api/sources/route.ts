@@ -6,10 +6,17 @@ import { createSourceSchema } from "@/lib/validation/source";
 export async function GET() {
   const sources = await prisma.source.findMany({
     orderBy: { createdAt: "desc" },
-    include: {
-      _count: {
-        select: { rawArticles: true }
-      }
+    select: {
+      id: true,
+      name: true,
+      url: true,
+      type: true,
+      enabled: true,
+      trustScore: true,
+      lastIngestedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { rawArticles: true } }
     }
   });
 

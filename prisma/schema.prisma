@@ -32,10 +32,15 @@ enum Severity {
 }
 
 enum EventStatus {
-  DRAFT
   NEEDS_REVIEW
   PUBLISHED
   REJECTED
+}
+
+enum ExtractionSource {
+  RULES
+  AI
+  GEORSS
 }
 
 model Source {
@@ -61,14 +66,13 @@ model RawArticle {
   title       String
   url         String          @unique
   publishedAt DateTime?
-  contentHash String
+  contentHash String          @unique
   rawText     String
   riskEventId String?
   riskEvent   RiskEvent?      @relation(fields: [riskEventId], references: [id], onDelete: SetNull)
   createdAt   DateTime        @default(now())
 
   @@index([sourceId])
-  @@index([contentHash])
   @@index([publishedAt])
 }
 
@@ -88,7 +92,7 @@ model RiskEvent {
   signals            Json          @default("[]")
   sourceUrl          String
   occurredAt         DateTime?     // earliest publishedAt from associated RawArticles; null if unknown
-  extractionSource   String        @default("rules") // "rules" | "ai" | "georss"
+  extractionSource   ExtractionSource @default(RULES)
   aiEnhanced         Boolean       @default(false)
   geocoderUsed       Boolean       @default(false)
   rawArticles        RawArticle[]

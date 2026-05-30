@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { ingestRssSource } from "@/lib/pipeline/rss";
+import { enqueueIngest } from "@/lib/pipeline/ingest-queue";
 
 // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
 function isCronAuthorized(request: NextRequest): boolean {
@@ -17,21 +17,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const sources = await prisma.source.findMany({ where: { enabled: true } });
 
-  const results = [];
-
-  for (const source of sources) {
-    try {
-      const result = await ingestRssSource(source.id);
-      results.push({ sourceId: source.id, sourceName: source.name, ok: true, result });
-    } catch (error) {
-      results.push({
-        sourceId: source.id,
-        sourceName: source.name,
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  }
+  const results = await Promise.all(
+    sources.map(async (source) => {
+      try {
+        const result = await enqueueIngest(source.id);
+        return { sourceId: source.id, sourceName: source.name, ok: true, result };
+      } catch (error) {
+        return {
+          sourceId: source.id,
+          sourceName: source.name,
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error"
+        };
+      }
+    })
+  );
 
   return NextResponse.json({ results, runAt: new Date().toISOString() });
 }
