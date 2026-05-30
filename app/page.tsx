@@ -53,7 +53,7 @@ export default async function DashboardPage({
 
   const baseWhere = { status: EventStatus.PUBLISHED, ...timeFilter };
 
-  const [mapEvents, latestEvents, publishedCount, reviewCount, sourceCount, lastIngested] =
+  const [mapEvents, latestEvents, publishedCount, reviewCount, sourceCount, lastIngested, aiCount, geocoderCount] =
     await Promise.all([
       prisma.riskEvent.findMany({
         where: baseWhere,
@@ -72,7 +72,9 @@ export default async function DashboardPage({
         where: { enabled: true, lastIngestedAt: { not: null } },
         orderBy: { lastIngestedAt: "desc" },
         select: { lastIngestedAt: true }
-      })
+      }),
+      prisma.riskEvent.count({ where: { ...baseWhere, aiEnhanced: true } }),
+      prisma.riskEvent.count({ where: { ...baseWhere, geocoderUsed: true } })
     ]);
 
   const nextUpdateHours = hoursUntilNextDailyRun(now);
@@ -97,7 +99,7 @@ export default async function DashboardPage({
             </p>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
           <div className="rounded-md border border-border bg-card p-3">
             <div className="text-2xl font-semibold">{publishedCount}</div>
             <div className="text-muted-foreground">Published</div>
@@ -109,6 +111,14 @@ export default async function DashboardPage({
           <div className="rounded-md border border-border bg-card p-3">
             <div className="text-2xl font-semibold">{sourceCount}</div>
             <div className="text-muted-foreground">Sources</div>
+          </div>
+          <div className="rounded-md border border-border bg-card p-3">
+            <div className="text-2xl font-semibold">{aiCount}</div>
+            <div className="text-muted-foreground">AI-enhanced</div>
+          </div>
+          <div className="rounded-md border border-border bg-card p-3">
+            <div className="text-2xl font-semibold">{geocoderCount}</div>
+            <div className="text-muted-foreground">Geocoded</div>
           </div>
         </div>
       </section>

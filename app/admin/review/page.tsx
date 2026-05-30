@@ -101,6 +101,9 @@ export default async function ReviewPage({
                       <Badge tone="blue">{event.category}</Badge>
                       <Badge tone="yellow">{event.severity}</Badge>
                       <Badge>{Math.round(event.confidence * 100)}% confidence</Badge>
+                      {event.aiEnhanced && <Badge tone="green">AI</Badge>}
+                      {event.geocoderUsed && <Badge tone="green">Geocoded</Badge>}
+                      {event.extractionSource === "georss" && <Badge>GeoRSS</Badge>}
                     </div>
                     <p className="text-lg font-semibold">{event.title}</p>
                     <p className="mt-2 max-w-4xl text-sm text-muted-foreground">{event.summary}</p>
