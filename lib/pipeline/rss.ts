@@ -6,6 +6,7 @@ import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/ext
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { geocodeLocation } from "@/lib/pipeline/geocoder";
+import { enrichLocation, shouldEnrichLocation } from "@/lib/pipeline/location-enrichment";
 import { extractWithAI, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
@@ -271,6 +272,40 @@ export async function ingestRssSource(sourceId: string) {
           label: "location:nominatim",
           detail: `Geocoded via Nominatim: ${geocoded.country} (${geocoded.lat.toFixed(4)}, ${geocoded.lon.toFixed(4)})`,
           weight: geocoded.confidence
+        });
+      }
+    }
+
+    // AI location enrichment — runs after Nominatim, only for quality events
+    // without precise coordinates. Uses Groq to extract a sub-national place name,
+    // then Nominatim to geocode it.
+    if (
+      !geoCoords &&
+      !geocoderUsed &&
+      shouldEnrichLocation({
+        isLikelyRiskEvent: extracted.isLikelyRiskEvent,
+        riskSignals: extracted.riskSignals,
+        category: extracted.category,
+        locationConfidence: extracted.locationConfidence,
+        country: extracted.country,
+      })
+    ) {
+      const enriched = await enrichLocation({
+        title,
+        rawText,
+        country: extracted.country!,
+      });
+      if (enriched) {
+        geocoderUsed = true;
+        extracted.city = enriched.placeName;
+        extracted.latitude = enriched.lat;
+        extracted.longitude = enriched.lon;
+        extracted.locationConfidence = 0.75;
+        extracted.signals.push({
+          kind: "location",
+          label: "location:ai-enriched",
+          detail: `Place extracted by AI: "${enriched.placeName}" → geocoded to (${enriched.lat.toFixed(4)}, ${enriched.lon.toFixed(4)})`,
+          weight: 0.75,
         });
       }
     }
