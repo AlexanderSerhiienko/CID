@@ -72,7 +72,16 @@ export function EventMap({ events }: { events: MapRiskEvent[] }) {
 
   return (
     <div className="relative h-[460px] overflow-hidden rounded-md border border-border bg-card">
-      <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom className="h-full bg-slate-950">
+      <MapContainer
+        center={[20, 0]}
+        zoom={2}
+        scrollWheelZoom
+        maxBounds={[[-85, -220], [85, 220]]}
+        maxBoundsViscosity={0.6}
+        minZoom={1}
+        maxZoom={10}
+        className="h-full bg-slate-950"
+      >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"

@@ -25,7 +25,7 @@ export function AdminTokenControl() {
 
   return (
     <div className="flex items-center gap-2">
-      <KeyRound className="h-4 w-4 text-muted-foreground" />
+      <KeyRound className="h-3.5 w-3.5 text-[#8c909f]" />
       <input
         value={token}
         onChange={(event) => {
@@ -34,14 +34,14 @@ export function AdminTokenControl() {
         }}
         placeholder="Admin token"
         type="password"
-        className="h-9 w-32 rounded-md border border-border bg-background px-2 text-xs md:w-44"
+        className="h-8 w-32 rounded border border-[#2d2d2d] bg-[#191b23] px-2 text-xs text-[#e1e2ec] placeholder-[#8c909f] focus:outline-none focus:border-[#3b82f6] md:w-40 transition-colors"
       />
       <button
         type="button"
         onClick={save}
-        className="h-9 rounded-md border border-border bg-card px-2 text-xs hover:bg-muted"
+        className="h-8 rounded border border-[#2d2d2d] bg-[#272a31] px-2.5 text-xs text-[#c2c6d6] hover:border-[#424754] hover:text-[#e1e2ec] transition-colors"
       >
-        {saved ? "Saved" : "Save"}
+        {saved ? "✓ Saved" : "Save"}
       </button>
     </div>
   );

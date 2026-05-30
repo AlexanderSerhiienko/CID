@@ -1,15 +1,29 @@
 import Link from "next/link";
-import { EventStatus, Prisma, SourceType } from "@prisma/client";
+import { EventStatus, Prisma, Severity, SourceType } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { ReviewActions } from "@/components/review-actions";
 import { BulkApproveButton } from "@/components/bulk-approve-button";
-import { Badge } from "@/components/ui/badge";
+import { AdminGate } from "@/components/admin-gate";
 import { prisma } from "@/lib/db";
 import { rankMergeSuggestions } from "@/lib/review/merge-suggestions";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
+
+function severityColor(severity: Severity): string {
+  if (severity === Severity.CRITICAL) return "#ffb4ab";
+  if (severity === Severity.HIGH) return "#ffb786";
+  if (severity === Severity.MEDIUM) return "#4edea3";
+  return "#8c909f";
+}
+
+function severityBg(severity: Severity): string {
+  if (severity === Severity.CRITICAL) return "#ffb4ab1a";
+  if (severity === Severity.HIGH) return "#ffb7861a";
+  if (severity === Severity.MEDIUM) return "#4edea31a";
+  return "#8c909f1a";
+}
 
 export default async function ReviewPage({
   searchParams
@@ -34,7 +48,6 @@ export default async function ReviewPage({
       }
     }),
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW } }),
-    // Count NEEDS_REVIEW events that came from at least one OFFICIAL_FEED source
     prisma.riskEvent.count({
       where: {
         status: EventStatus.NEEDS_REVIEW,
@@ -43,9 +56,6 @@ export default async function ReviewPage({
         }
       }
     }),
-    // Merge suggestions are only meaningful for recent events. Use a 7-day window
-    // instead of a hard take:50 — the cap silently omits older events even when
-    // they are the best semantic match for a candidate being reviewed.
     prisma.riskEvent.findMany({
       where: {
         status: { not: EventStatus.REJECTED },
@@ -65,128 +75,163 @@ export default async function ReviewPage({
     })
   ]);
 
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <AdminGate>
+    <div className="max-w-[1600px] mx-auto px-6 py-8">
+      {/* Header */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Review Queue</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Uncertain extracted events wait here before publication.
+          <h1 className="text-2xl font-semibold text-[#e1e2ec] tracking-tight">Review Queue</h1>
+          <p className="mt-1 text-sm text-[#c2c6d6]">
+            Manage and triage incoming crisis events.{" "}
             {total > 0 && (
-              <> {total} event{total !== 1 ? "s" : ""} awaiting review.</>
+              <span className="text-[#ffb786]">{total} event{total !== 1 ? "s" : ""} awaiting review.</span>
             )}
           </p>
         </div>
-        {officialCount > 0 && (
-          <BulkApproveButton pendingCount={officialCount} />
-        )}
+        {officialCount > 0 && <BulkApproveButton pendingCount={officialCount} />}
       </div>
 
       {events.length === 0 && page === 1 ? (
         <EmptyState
           title="Review queue is empty"
-          detail="Run ingestion or lower confidence in extraction rules to generate review candidates."
+          detail="Run ingestion or lower confidence thresholds to generate review candidates."
         />
       ) : (
         <>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {events.map((event) => {
               const mergeSuggestions = rankMergeSuggestions(event, mergeTargets).slice(0, 12);
+              const sevColor = severityColor(event.severity);
+              const sevBg = severityBg(event.severity);
+              const sources = event.rawArticles.map((a) => a.source.name).filter(Boolean);
+              const uniqueSources = [...new Set(sources)];
 
               return (
-              <article key={event.id} className="rounded-md border border-border bg-card p-4">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      <Badge tone="blue">{event.category}</Badge>
-                      <Badge tone="yellow">{event.severity}</Badge>
-                      <Badge>{Math.round(event.confidence * 100)}% confidence</Badge>
-                      {event.aiEnhanced && <Badge tone="green">AI</Badge>}
-                      {event.geocoderUsed && <Badge tone="green">Geocoded</Badge>}
-                      {event.extractionSource === "georss" && <Badge>GeoRSS</Badge>}
-                    </div>
-                    <p className="text-lg font-semibold">{event.title}</p>
-                    <p className="mt-2 max-w-4xl text-sm text-muted-foreground">{event.summary}</p>
-                    <div className="mt-3 text-sm">
-                      Location: {[event.city, event.country].filter(Boolean).join(", ") || "Unknown"} ·
-                      location confidence {Math.round(event.locationConfidence * 100)}%
-                    </div>
-                  </div>
-                  <ReviewActions event={event} mergeTargets={mergeSuggestions} />
-                </div>
-
-                <div className="mt-4 border-t border-border pt-3 text-sm">
-                  <div className="font-medium">Evidence</div>
-                  <div className="mt-2 space-y-2">
-                    {event.rawArticles.map((article) => (
-                      <div key={article.id} className="rounded-md border border-border bg-background p-3">
-                        <a className="text-primary" href={article.url} target="_blank">
-                          {article.title}
-                        </a>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {article.source.name}
-                          {article.publishedAt ? ` · ${article.publishedAt.toISOString().slice(0, 10)}` : ""}
-                        </div>
-                        <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                          {article.rawText}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-4 border-t border-border pt-3 text-sm">
-                  <div className="font-medium">Extraction signals</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {readSignals(event.signals).length > 0 ? (
-                      readSignals(event.signals).map((signal, index) => (
+                <article
+                  key={event.id}
+                  className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] hover:border-[#424754] transition-colors"
+                >
+                  {/* Card header */}
+                  <div className="p-4 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      {/* Meta chips */}
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
                         <span
-                          key={`${signal.label}-${index}`}
-                          title={signal.detail}
-                          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground"
+                          className="text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded border flex items-center gap-1"
+                          style={{ color: sevColor, backgroundColor: sevBg, borderColor: `${sevColor}40` }}
                         >
-                          {signal.label}
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: sevColor }} />
+                          {event.severity}
                         </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No extraction signals recorded.</span>
-                    )}
+                        <span className="text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded border border-[#424754] text-[#c2c6d6]">
+                          {event.category.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-[10px] font-mono text-[#4edea3]">
+                          {Math.round(event.confidence * 100)}% conf.
+                        </span>
+                        {event.aiEnhanced && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-[#3b82f6]/30 text-[#3b82f6] bg-[#3b82f6]/10">AI</span>
+                        )}
+                        {event.geocoderUsed && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-[#4edea3]/30 text-[#4edea3] bg-[#4edea3]/10">Geocoded</span>
+                        )}
+                      </div>
+
+                      <h3 className="text-base font-semibold text-[#e1e2ec] mb-1">{event.title}</h3>
+                      <p className="text-sm text-[#c2c6d6] line-clamp-2 mb-2">{event.summary}</p>
+
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-[#8c909f]">
+                        {(event.city || event.country) && (
+                          <span>
+                            📍 {[event.city, event.country].filter(Boolean).join(", ")}
+                            {" · "}loc. {Math.round(event.locationConfidence * 100)}%
+                          </span>
+                        )}
+                        {uniqueSources.length > 0 && (
+                          <span className="text-[#8c909f]">
+                            Sources: {uniqueSources.join(", ")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      <ReviewActions event={event} mergeTargets={mergeSuggestions} />
+                    </div>
                   </div>
-                </div>
-              </article>
+
+                  {/* Evidence */}
+                  <div className="border-t border-[#2d2d2d] px-4 py-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-2">Evidence</div>
+                    <div className="space-y-2">
+                      {event.rawArticles.map((article) => (
+                        <div key={article.id} className="rounded border border-[#2d2d2d] bg-[#191b23] p-3">
+                          <a
+                            className="text-sm font-medium text-[#3b82f6] hover:underline"
+                            href={article.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {article.title}
+                          </a>
+                          <div className="mt-0.5 text-[10px] font-mono text-[#8c909f]">
+                            {article.source.name}
+                            {article.publishedAt ? ` · ${article.publishedAt.toISOString().slice(0, 10)}` : ""}
+                          </div>
+                          <p className="mt-1.5 line-clamp-2 text-xs text-[#c2c6d6]">{article.rawText}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Signals */}
+                  {readSignals(event.signals).length > 0 && (
+                    <div className="border-t border-[#2d2d2d] px-4 py-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-2">Extraction signals</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {readSignals(event.signals).map((signal, index) => (
+                          <span
+                            key={`${signal.label}-${index}`}
+                            title={signal.detail}
+                            className="rounded border border-[#2d2d2d] bg-[#191b23] px-2 py-0.5 text-[10px] font-mono text-[#c2c6d6]"
+                          >
+                            {signal.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </article>
               );
             })}
           </div>
 
-          {Math.ceil(total / PAGE_SIZE) > 1 && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                Page {page} of {Math.ceil(total / PAGE_SIZE)}
-              </span>
+          {totalPages > 1 && (
+            <div className="mt-5 flex items-center justify-between text-xs text-[#8c909f]">
+              <span>Page {page} of {totalPages} · {total} events</span>
               <div className="flex gap-2">
                 {page > 1 ? (
                   <Link
                     href={`/admin/review${page > 2 ? `?page=${page - 1}` : ""}`}
-                    className="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted"
+                    className="px-3 py-1.5 rounded border border-[#2d2d2d] hover:border-[#424754] hover:text-[#e1e2ec] transition-colors"
                   >
                     ← Prev
                   </Link>
                 ) : (
-                  <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-40">
-                    ← Prev
-                  </span>
+                  <span className="px-3 py-1.5 rounded border border-[#2d2d2d] opacity-30">← Prev</span>
                 )}
-                {page < Math.ceil(total / PAGE_SIZE) ? (
+                {page < totalPages ? (
                   <Link
                     href={`/admin/review?page=${page + 1}`}
-                    className="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted"
+                    className="px-3 py-1.5 rounded border border-[#2d2d2d] hover:border-[#424754] hover:text-[#e1e2ec] transition-colors"
                   >
                     Next →
                   </Link>
                 ) : (
-                  <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-40">
-                    Next →
-                  </span>
+                  <span className="px-3 py-1.5 rounded border border-[#2d2d2d] opacity-30">Next →</span>
                 )}
               </div>
             </div>
@@ -194,6 +239,7 @@ export default async function ReviewPage({
         </>
       )}
     </div>
+    </AdminGate>
   );
 }
 
@@ -203,27 +249,16 @@ type ReviewSignal = {
 };
 
 function readSignals(value: Prisma.JsonValue): ReviewSignal[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
+  if (!Array.isArray(value)) return [];
   const signals: ReviewSignal[] = [];
-
   for (const signal of value) {
-    if (!signal || typeof signal !== "object" || Array.isArray(signal)) {
-      continue;
-    }
-
+    if (!signal || typeof signal !== "object" || Array.isArray(signal)) continue;
     const record = signal as Record<string, unknown>;
-    if (typeof record.label !== "string") {
-      continue;
-    }
-
+    if (typeof record.label !== "string") continue;
     signals.push({
       label: record.label,
       detail: typeof record.detail === "string" ? record.detail : undefined
     });
   }
-
   return signals;
 }
