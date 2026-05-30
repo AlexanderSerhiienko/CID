@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The project has many possible features: richer source management, more feeds, local Ollama extraction, map filters, event merging, job dashboards, authentication, and operational tooling.
+The project has many possible features: richer source management, more feeds, Groq extraction, map filters, event merging, job dashboards, authentication, and operational tooling.
 
 After the first implementation pass, the repository has a working skeleton, but the end-to-end ingestion loop still needs validation with a real database and live feed data.
 
@@ -26,7 +26,7 @@ The next milestone is stabilization, not scope expansion.
 
 This would make the app look richer but would not prove the core ingestion pipeline.
 
-### Add Ollama extraction first
+### Add Groq extraction first
 
 This would make the project sound more AI-heavy, but it would add uncertainty before deterministic behavior is verified.
 

@@ -13,7 +13,9 @@ const mocks = vi.hoisted(() => ({
     },
     riskEvent: {
       updateMany: vi.fn(),
-      findMany: vi.fn()
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      count: vi.fn()
     }
   },
   ingestRssSource: vi.fn(),
@@ -35,6 +37,9 @@ vi.mock("@/lib/review/merge", () => ({
 import { PATCH as reviewPatch } from "@/app/api/admin/review/route";
 import { POST as ingestPost } from "@/app/api/ingest/rss/route";
 import { POST as sourcePost } from "@/app/api/sources/route";
+import { GET as eventsGet } from "@/app/api/events/route";
+import { GET as eventGet } from "@/app/api/events/[id]/route";
+import { POST as bulkApprovePost } from "@/app/api/admin/bulk-approve/route";
 import { PATCH as sourcePatch } from "@/app/api/sources/[id]/route";
 
 describe("protected API route contracts", () => {
@@ -173,6 +178,134 @@ describe("protected API route contracts", () => {
     expect(mocks.mergeRiskEvent).not.toHaveBeenCalled();
   });
 });
+
+describe("GET /api/events", () => {
+  it("returns published events with pagination metadata", async () => {
+    const events = [{ id: "e1", title: "Flood", status: EventStatus.PUBLISHED }];
+    mocks.prisma.riskEvent.findMany.mockResolvedValue(events);
+    mocks.prisma.riskEvent.count.mockResolvedValue(1);
+
+    const response = await eventsGet(getRequest("/api/events"));
+
+    await expect(response.json()).resolves.toMatchObject({ events, total: 1, page: 1, totalPages: 1 });
+    expect(response.status).toBe(200);
+  });
+
+  it("ignores non-PUBLISHED status param — always returns PUBLISHED", async () => {
+    mocks.prisma.riskEvent.findMany.mockResolvedValue([]);
+    mocks.prisma.riskEvent.count.mockResolvedValue(0);
+
+    await eventsGet(getRequest("/api/events?status=DRAFT"));
+
+    expect(mocks.prisma.riskEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: EventStatus.PUBLISHED }) })
+    );
+  });
+
+  it("ignores invalid category param", async () => {
+    mocks.prisma.riskEvent.findMany.mockResolvedValue([]);
+    mocks.prisma.riskEvent.count.mockResolvedValue(0);
+
+    await eventsGet(getRequest("/api/events?category=INVALID"));
+
+    expect(mocks.prisma.riskEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ category: undefined }) })
+    );
+  });
+
+  it("clamps limit to MAX_LIMIT (100)", async () => {
+    mocks.prisma.riskEvent.findMany.mockResolvedValue([]);
+    mocks.prisma.riskEvent.count.mockResolvedValue(0);
+
+    await eventsGet(getRequest("/api/events?limit=999"));
+
+    expect(mocks.prisma.riskEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100 })
+    );
+  });
+
+  it("filters by valid category param", async () => {
+    mocks.prisma.riskEvent.findMany.mockResolvedValue([]);
+    mocks.prisma.riskEvent.count.mockResolvedValue(0);
+
+    await eventsGet(getRequest("/api/events?category=NATURAL_DISASTER"));
+
+    expect(mocks.prisma.riskEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ category: EventCategory.NATURAL_DISASTER }) })
+    );
+  });
+});
+
+describe("GET /api/events/[id]", () => {
+  it("returns a published event by id", async () => {
+    const event = { id: "e1", title: "Flood", status: EventStatus.PUBLISHED, rawArticles: [] };
+    mocks.prisma.riskEvent.findUnique.mockResolvedValue(event);
+
+    const response = await eventGet(new Request("http://localhost/api/events/e1"), {
+      params: Promise.resolve({ id: "e1" })
+    });
+
+    await expect(response.json()).resolves.toEqual({ event });
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.riskEvent.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "e1", status: EventStatus.PUBLISHED } })
+    );
+  });
+
+  it("returns 404 when event not found or not published", async () => {
+    mocks.prisma.riskEvent.findUnique.mockResolvedValue(null);
+
+    const response = await eventGet(new Request("http://localhost/api/events/missing"), {
+      params: Promise.resolve({ id: "missing" })
+    });
+
+    await expect(response.json()).resolves.toEqual({ error: "Event not found" });
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("POST /api/admin/bulk-approve", () => {
+  it("rejects without admin token", async () => {
+    const response = await bulkApprovePost(jsonRequest("/api/admin/bulk-approve", {}));
+
+    await expect(response.json()).resolves.toEqual({ error: "Admin token required." });
+    expect(response.status).toBe(401);
+  });
+
+  it("returns approved: 0 when no official-feed events in review queue", async () => {
+    mocks.prisma.riskEvent.findMany.mockResolvedValue([]);
+
+    const response = await bulkApprovePost(
+      jsonRequest("/api/admin/bulk-approve", {}, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ approved: 0 });
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.riskEvent.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("publishes only official-feed events and returns count", async () => {
+    mocks.prisma.riskEvent.findMany.mockResolvedValue([
+      { id: "e1", rawArticles: [{ source: { type: SourceType.OFFICIAL_FEED } }] },
+      { id: "e2", rawArticles: [{ source: { type: SourceType.RSS } }] }
+    ]);
+    mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 1 });
+
+    const response = await bulkApprovePost(
+      jsonRequest("/api/admin/bulk-approve", {}, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ approved: 1 });
+    expect(mocks.prisma.riskEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["e1"] }, status: EventStatus.NEEDS_REVIEW },
+      data: { status: EventStatus.PUBLISHED }
+    });
+  });
+});
+
+function getRequest(path: string) {
+  return new NextRequest(`http://localhost${path}`, { method: "GET" });
+}
 
 function validSourcePayload() {
   return {

@@ -6,9 +6,19 @@ Scan the CID codebase for real, concrete bugs and create GitHub Issues for each 
 
 - Only report bugs that are verifiable from the code: point to a specific file and line
 - Never invent hypothetical problems — every issue must have evidence in the code
-- Max 5 issues per run — prioritize by severity (data loss > silent failure > wrong output > UX)
+- Max 5 issues per run — prioritize by severity: **data loss > security auth bypass > silent failure > wrong output > UX/cosmetic**
 - Skip anything already caught by TypeScript or ESLint
 - Skip TODOs and style issues
+
+## Skip these explicitly
+
+- Anything in `scripts/` — backfill and migration scripts are one-off tools, not production code
+- Cosmetic security hardening: `rel="noopener"`, CSP headers, `SameSite` cookies, `X-Frame-Options` — these are hygiene, not bugs
+- Issues already filed: before creating any issue, check existing open GitHub issues and skip if the same root cause is already tracked
+
+## Deduplication rule
+
+If the same root cause appears in multiple files (e.g. NaN pagination in three different routes), file **ONE issue** that lists all affected locations. Do not file one issue per file. The title should describe the pattern, the body should list every `file:line` affected.
 
 ## What to look for
 

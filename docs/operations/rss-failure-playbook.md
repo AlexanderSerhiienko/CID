@@ -14,7 +14,7 @@ Use this playbook when RSS ingestion fails, creates duplicates, or stops produci
 6. Check BullMQ failed jobs and retry count.
 7. Confirm PostgreSQL is reachable.
 8. Look for duplicate URL or content hash constraint errors.
-9. If Ollama is enabled, check whether extraction timed out or returned invalid JSON.
+9. If Groq extraction is enabled, check whether it timed out or returned invalid JSON.
 
 ## Common Causes
 

@@ -17,11 +17,10 @@ AI is embedded into the development workflow through structured context files, n
 The repository includes:
 
 - `CLAUDE.md` — project context, conventions, and workflow instructions read automatically by Claude Code
-- `agents/` — role-specific instructions for planning, coding, review, testing, refactoring, and DevOps
 - `ROADMAP.md` — next features with architecture and acceptance criteria
 - Architecture Decision Records for important tradeoffs
 
-Runtime AI is optional. The application may use local Ollama for structured extraction from article text, but deterministic rules must remain the fallback.
+Runtime AI is optional. The application uses Groq for structured extraction from article text, but deterministic rules must remain the fallback — the app works without Groq.
 
 ## Alternatives Considered
 
