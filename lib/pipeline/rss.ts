@@ -1,29 +1,16 @@
 import Parser from "rss-parser";
-import { EventCategory, EventStatus } from "@prisma/client";
+import { EventCategory, EventStatus, ExtractionSource } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { contentHash } from "@/lib/pipeline/hash";
-import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
+import { extractEventFromArticle, CONFIDENCE_CATEGORY_BONUS, type PipelineSignal } from "@/lib/pipeline/extraction";
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { geocodeLocation } from "@/lib/pipeline/geocoder";
-import { extractWithAI, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
+import { extractWithAIThrottled, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
 const GEORSS_LOCATION_CONFIDENCE = 0.9;
-
-// Groq circuit breaker: open after N consecutive null returns, reset after 5 minutes.
-// Module-level so a Groq outage trips the circuit globally — if Groq is down
-// for one source it's down for all of them, and stalling per-article is wasteful.
-const GROQ_CIRCUIT_THRESHOLD = 3;
-const GROQ_CIRCUIT_RESET_MS = 5 * 60 * 1_000;
-let groqConsecutiveNulls = 0;
-let groqCircuitOpenUntil = 0;
-
-// Rate limiter: Groq free tier allows 30 RPM (1 request every 2 seconds).
-// Track the last call timestamp and enforce a minimum gap to avoid 429s proactively.
-const GROQ_MIN_INTERVAL_MS = 2_100; // slightly over 2s for safety margin
-let groqLastCallAt = 0;
 
 // Custom fields for GeoRSS (used by USGS Atom feed and others)
 type GeoRssItem = {
@@ -87,43 +74,6 @@ function parseDate(value: string | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/**
- * Wraps extractWithAI with a simple circuit breaker.
- * After GROQ_CIRCUIT_THRESHOLD consecutive null returns, skips Groq for
- * GROQ_CIRCUIT_RESET_MS to avoid stalling the pipeline on every article
- * during an outage or rate-limit period.
- */
-async function extractWithAIGuarded(
-  title: string,
-  rawText: string
-): Promise<Awaited<ReturnType<typeof extractWithAI>>> {
-  if (!process.env.GROQ_API_KEY) return null; // not configured — skip tracking
-  if (Date.now() < groqCircuitOpenUntil) return null; // circuit open
-
-  // Enforce minimum gap between requests to stay within 30 RPM free-tier limit.
-  const wait = groqLastCallAt + GROQ_MIN_INTERVAL_MS - Date.now();
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  groqLastCallAt = Date.now();
-
-  const result = await extractWithAI(title, rawText);
-
-  if (result === null) {
-    groqConsecutiveNulls += 1;
-    if (groqConsecutiveNulls >= GROQ_CIRCUIT_THRESHOLD) {
-      groqCircuitOpenUntil = Date.now() + GROQ_CIRCUIT_RESET_MS;
-      console.warn(
-        `[groq] Circuit opened after ${GROQ_CIRCUIT_THRESHOLD} consecutive failures. ` +
-          `Skipping AI extraction for ${GROQ_CIRCUIT_RESET_MS / 60_000} minutes.`
-      );
-      // Do NOT reset groqConsecutiveNulls here — groqCircuitOpenUntil already gates
-      // all subsequent calls, and the next successful Groq response resets it to 0.
-    }
-  } else {
-    groqConsecutiveNulls = 0;
-  }
-
-  return result;
-}
 
 export async function ingestRssSource(sourceId: string) {
   const source = await prisma.source.findUniqueOrThrow({
@@ -353,9 +303,9 @@ export async function ingestRssSource(sourceId: string) {
     // AI is now the primary source for category, severity, summary, and location.
     // Rules are the fallback when AI is unavailable.
     let aiEnhanced = false;
-    const extractionSource = geoCoords ? "georss" : "rules";
+    let extractionSource: ExtractionSource = geoCoords ? ExtractionSource.GEORSS : ExtractionSource.RULES;
     if (!geoCoords) {
-      const aiResult = await extractWithAIGuarded(title, rawText);
+      const aiResult = await extractWithAIThrottled(title, rawText);
       if (aiResult) {
         if (!aiResult.isRiskEvent) {
           // AI determined this is not an active risk event (policy report, stats, etc.) —
@@ -376,9 +326,8 @@ export async function ingestRssSource(sourceId: string) {
 
         // Apply AI category/severity/summary as primary source.
         // If AI upgrades from UNKNOWN to a concrete category, apply the missed confidence bonus.
-        // CONFIDENCE_CATEGORY_BONUS = 0.25 (matches lib/pipeline/extraction.ts)
         if (extracted.category === EventCategory.UNKNOWN && aiResult.category !== EventCategory.UNKNOWN) {
-          extracted.confidence = Math.min(1, Number((extracted.confidence + 0.25).toFixed(2)));
+          extracted.confidence = Math.min(1, Number((extracted.confidence + CONFIDENCE_CATEGORY_BONUS).toFixed(2)));
         }
         extracted.category = aiResult.category;
         extracted.severity = aiResult.severity;
@@ -423,6 +372,7 @@ export async function ingestRssSource(sourceId: string) {
           weight: 0.1
         });
         aiEnhanced = true;
+        extractionSource = ExtractionSource.AI;
       }
     }
 
