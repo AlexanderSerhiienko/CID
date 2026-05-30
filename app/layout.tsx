@@ -45,6 +45,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </div>
           <div className="flex items-center gap-3">
             <AdminTokenControl />
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/api/events/feed"
               className="text-[#8c909f] hover:text-[#3b82f6] transition-colors"
