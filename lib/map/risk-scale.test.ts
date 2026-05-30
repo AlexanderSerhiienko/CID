@@ -78,6 +78,7 @@ function event(overrides: Partial<Parameters<typeof aggregateCountryRisk>[0][num
     city: null,
     latitude: 10,
     longitude: 20,
+    locationConfidence: 0.65,
     ...overrides
   };
 }
