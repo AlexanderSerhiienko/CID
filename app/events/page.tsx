@@ -128,7 +128,7 @@ export default async function EventsPage({
             Manage and review global intelligence events.
             {(total + nonAiTotal) > 0 && (
               <span className="ml-2 text-[#8c909f]">
-                {total} AI enriched · {nonAiTotal} GeoRSS/rules
+                {total} AI reviewed · {nonAiTotal} deterministic
               </span>
             )}
           </p>
@@ -213,8 +213,8 @@ export default async function EventsPage({
 
       {/* AI Enriched Table */}
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-[#3b82f6]">✦ AI Enriched</span>
-        <span className="text-[10px] text-[#8c909f]">{total} events — category, severity and summary extracted by Groq</span>
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-[#3b82f6]">AI Reviewed</span>
+        <span className="text-[10px] text-[#8c909f]">{total} events with AI-refined category, severity, and summary</span>
       </div>
       <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-lg overflow-hidden mb-8">
         <div className="overflow-x-auto">
@@ -315,12 +315,12 @@ export default async function EventsPage({
           </div>
         )}
       </div>
-      {/* GeoRSS / Rules Table */}
+      {/* Deterministic Table */}
       {nonAiTotal > 0 && (
         <>
           <div className="mb-2 flex items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-[#4edea3]">◎ GeoRSS / Rules</span>
-            <span className="text-[10px] text-[#8c909f]">{nonAiTotal} events — extracted by deterministic rules or GeoRSS feed</span>
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-[#4edea3]">Deterministic</span>
+            <span className="text-[10px] text-[#8c909f]">{nonAiTotal} events from rules or feed-provided coordinates</span>
           </div>
           <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-lg overflow-hidden">
             <div className="overflow-x-auto">

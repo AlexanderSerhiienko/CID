@@ -128,14 +128,14 @@ export default async function ReviewPage({
           </div>
           <div className="h-4 w-px bg-[#2d2d2d]" />
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">AI processing</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">Enriching</span>
             <span className={aiPendingCount > 0 ? "font-semibold text-[#f59e0b]" : "font-semibold text-[#8c909f]"}>
               {aiPendingCount}
             </span>
           </div>
           <div className="h-4 w-px bg-[#2d2d2d]" />
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">AI enriched</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">AI ready</span>
             <span className="font-semibold text-[#3b82f6]">{statAiEnriched}</span>
           </div>
           <div className="h-4 w-px bg-[#2d2d2d]" />
@@ -153,16 +153,16 @@ export default async function ReviewPage({
         {/* Tab navigation */}
         <div className="mb-6 flex items-center gap-1 border-b border-[#2d2d2d]">
           <TabLink href="/admin/review" active={tab === "ai"} color="#3b82f6" count={aiEnrichedCount}>
-            ✦ AI Ready
+            AI Ready
           </TabLink>
           <TabLink href="/admin/review?tab=georss" active={tab === "georss"} color="#4edea3" count={geoCount}>
-            GeoRSS
+            Coordinates
           </TabLink>
           <TabLink href="/admin/review?tab=rules" active={tab === "rules"} color="#a78bfa" count={rulesCount}>
-            ⏳ Pending
+            Needs Enrichment
           </TabLink>
           <TabLink href="/admin/review?tab=filtered" active={tab === "filtered"} color="#8c909f" count={aiRejectedCount}>
-            ✗ Rejected by AI
+            AI Rejected
           </TabLink>
         </div>
 
@@ -171,8 +171,8 @@ export default async function ReviewPage({
           events.length === 0 ? (
             aiPendingCount > 0 ? (
               <EmptyState
-                title="Groq is working…"
-                detail={`Enriching ${aiPendingCount} article${aiPendingCount !== 1 ? "s" : ""} in background. Events will appear here when ready.`}
+                title="Enrichment is running"
+                detail={`Processing ${aiPendingCount} article${aiPendingCount !== 1 ? "s" : ""} in the background. Events will appear here when ready.`}
               />
             ) : (
               <div className="rounded-lg border border-[#4edea3]/20 bg-[#4edea3]/5 px-6 py-10 text-center">
@@ -206,8 +206,8 @@ export default async function ReviewPage({
         {tab === "georss" && (
           events.length === 0 ? (
             <EmptyState
-              title="No GeoRSS events pending"
-              detail="All GeoRSS events have been reviewed, or no new ones have been ingested."
+              title="No coordinate-fed events pending"
+              detail="All events created from feed coordinates have been reviewed."
             />
           ) : (
             <div className="space-y-3">
@@ -226,8 +226,8 @@ export default async function ReviewPage({
         {tab === "rules" && (
           events.length === 0 ? (
             <EmptyState
-              title="No rule-extracted events pending"
-              detail="All events have been AI-enriched, or no new ones have been ingested."
+              title="No events waiting for enrichment"
+              detail="All deterministic candidates have either been enriched or reviewed."
             />
           ) : (
             <div className="space-y-3">
@@ -246,8 +246,8 @@ export default async function ReviewPage({
         {tab === "filtered" && (
           rejectedArticles.length === 0 ? (
             <EmptyState
-              title="No AI-filtered articles"
-              detail="Groq hasn't rejected any articles yet, or they've all been promoted to events."
+              title="No AI-rejected articles"
+              detail="There are no articles waiting for human override."
             />
           ) : (
             <div className="space-y-2">
@@ -260,7 +260,7 @@ export default async function ReviewPage({
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className="text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded border border-[#424754] text-[#8c909f]">
-                          ✗ Groq: not a risk event
+                          AI marked not relevant
                         </span>
                         <span className="text-[10px] text-[#8c909f]">{article.source.name}</span>
                         <span className="text-[10px] font-mono text-[#8c909f]">
@@ -272,7 +272,7 @@ export default async function ReviewPage({
                     </div>
                     <div className="shrink-0 flex flex-col items-end gap-1">
                       <PromoteArticleButton articleId={article.id} />
-                      <span className="text-[9px] text-[#8c909f]">creates event in review queue</span>
+                      <span className="text-[9px] text-[#8c909f]">sends article to review queue</span>
                     </div>
                   </div>
                 </article>

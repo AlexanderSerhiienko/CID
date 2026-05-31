@@ -13,14 +13,35 @@ const mocks = vi.hoisted(() => ({
       updateMany: vi.fn()
     },
     riskEvent: {
+      create: vi.fn(),
+      update: vi.fn(),
       updateMany: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       count: vi.fn()
+    },
+    rawArticle: {
+      count: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn()
+    },
+    $transaction: vi.fn()
+  },
+  tx: {
+    riskEvent: {
+      create: vi.fn()
+    },
+    rawArticle: {
+      update: vi.fn()
     }
   },
   ingestSourcesWithTimeLimit: vi.fn(),
-  mergeRiskEvent: vi.fn()
+  mergeRiskEvent: vi.fn(),
+  enrichPendingArticles: vi.fn(),
+  enrichEvent: vi.fn(),
+  extractEventFromArticle: vi.fn(),
+  scoreCandidate: vi.fn()
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -36,18 +57,34 @@ vi.mock("@/lib/review/merge", () => ({
   mergeRiskEvent: mocks.mergeRiskEvent
 }));
 
+vi.mock("@/lib/pipeline/ai-enrichment", () => ({
+  enrichPendingArticles: mocks.enrichPendingArticles,
+  enrichEvent: mocks.enrichEvent
+}));
+
+vi.mock("@/lib/pipeline/extraction", () => ({
+  extractEventFromArticle: mocks.extractEventFromArticle
+}));
+
+vi.mock("@/lib/pipeline/scoring", () => ({
+  scoreCandidate: mocks.scoreCandidate
+}));
+
 import { PATCH as reviewPatch } from "@/app/api/admin/review/route";
 import { POST as ingestPost } from "@/app/api/ingest/rss/route";
 import { POST as sourcePost } from "@/app/api/sources/route";
 import { GET as eventsGet } from "@/app/api/events/route";
 import { GET as eventGet } from "@/app/api/events/[id]/route";
 import { POST as bulkApprovePost } from "@/app/api/admin/bulk-approve/route";
+import { POST as processNextPost } from "@/app/api/admin/process-next/route";
+import { POST as promoteArticlePost } from "@/app/api/admin/promote-article/route";
 import { PATCH as sourcePatch } from "@/app/api/sources/[id]/route";
 
 describe("protected API route contracts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.ADMIN_TOKEN = "dev-admin-token";
+    mocks.prisma.$transaction.mockImplementation((callback: (tx: typeof mocks.tx) => unknown) => callback(mocks.tx));
   });
 
   it("rejects source creation without admin token", async () => {
@@ -311,6 +348,172 @@ describe("POST /api/admin/bulk-approve", () => {
         aiEnhanced: true
       },
       data: { status: EventStatus.PUBLISHED }
+    });
+  });
+});
+
+describe("POST /api/admin/process-next", () => {
+  it("rejects without admin token", async () => {
+    const response = await processNextPost(jsonRequest("/api/admin/process-next", {}));
+
+    await expect(response.json()).resolves.toEqual({ error: "Admin token required." });
+    expect(response.status).toBe(401);
+    expect(mocks.enrichPendingArticles).not.toHaveBeenCalled();
+  });
+
+  it("processes one pending article before unenriched events", async () => {
+    mocks.prisma.rawArticle.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1);
+    mocks.enrichPendingArticles.mockResolvedValue({ processed: 1, notRisk: 0, skipped: 0, remaining: 1 });
+
+    const response = await processNextPost(
+      jsonRequest("/api/admin/process-next", {}, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ done: false, kind: "article", remaining: 1 });
+    expect(response.status).toBe(200);
+    expect(mocks.enrichPendingArticles).toHaveBeenCalledWith(1);
+    expect(mocks.prisma.riskEvent.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("stops the client loop when AI is temporarily unavailable for articles", async () => {
+    mocks.prisma.rawArticle.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+    mocks.enrichPendingArticles.mockResolvedValue({ processed: 0, notRisk: 0, skipped: 1, remaining: 1 });
+
+    const response = await processNextPost(
+      jsonRequest("/api/admin/process-next", {}, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ done: true, kind: "article", remaining: 1 });
+  });
+
+  it("processes one unenriched event when no articles are pending", async () => {
+    mocks.prisma.rawArticle.count.mockResolvedValue(0);
+    mocks.prisma.riskEvent.findFirst.mockResolvedValue({ id: "event-1" });
+    mocks.enrichEvent.mockResolvedValue({ ok: true, notRisk: false });
+    mocks.prisma.riskEvent.count.mockResolvedValue(0);
+
+    const response = await processNextPost(
+      jsonRequest("/api/admin/process-next", {}, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ done: true, kind: "event", remaining: 0 });
+    expect(mocks.enrichEvent).toHaveBeenCalledWith("event-1");
+  });
+
+  it("returns done when no enrichment work remains", async () => {
+    mocks.prisma.rawArticle.count.mockResolvedValue(0);
+    mocks.prisma.riskEvent.findFirst.mockResolvedValue(null);
+
+    const response = await processNextPost(
+      jsonRequest("/api/admin/process-next", {}, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ done: true, kind: "none", remaining: 0 });
+  });
+});
+
+describe("POST /api/admin/promote-article", () => {
+  it("rejects without admin token", async () => {
+    const response = await promoteArticlePost(jsonRequest("/api/admin/promote-article", { articleId: "article-1" }));
+
+    await expect(response.json()).resolves.toEqual({ error: "Admin token required." });
+    expect(response.status).toBe(401);
+    expect(mocks.prisma.rawArticle.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("validates request body before touching the database", async () => {
+    const response = await promoteArticlePost(
+      jsonRequest("/api/admin/promote-article", {}, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ error: "articleId required" });
+    expect(response.status).toBe(400);
+    expect(mocks.prisma.rawArticle.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the raw article does not exist", async () => {
+    mocks.prisma.rawArticle.findUnique.mockResolvedValue(null);
+
+    const response = await promoteArticlePost(
+      jsonRequest("/api/admin/promote-article", { articleId: "missing" }, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ error: "Article not found" });
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 409 when the raw article is already linked", async () => {
+    mocks.prisma.rawArticle.findUnique.mockResolvedValue({
+      id: "article-1",
+      riskEventId: "event-1",
+      source: { id: "source-1", trustScore: 0.8, type: SourceType.RSS }
+    });
+
+    const response = await promoteArticlePost(
+      jsonRequest("/api/admin/promote-article", { articleId: "article-1" }, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ error: "Already linked to an event" });
+    expect(response.status).toBe(409);
+  });
+
+  it("creates a review event and clears the AI-rejected flag", async () => {
+    const article = {
+      id: "article-1",
+      title: "Flooding reported",
+      rawText: "Flooding reported near the river.",
+      url: "https://example.com/flood",
+      publishedAt: new Date("2026-05-30T12:00:00Z"),
+      riskEventId: null,
+      source: { id: "source-1", trustScore: 0.8, type: SourceType.RSS }
+    };
+    const extracted = {
+      title: "Flooding reported",
+      summary: "Flooding reported near the river.",
+      category: EventCategory.NATURAL_DISASTER,
+      country: "France",
+      city: "Paris",
+      latitude: 48.8566,
+      longitude: 2.3522,
+      locationConfidence: 0.8,
+      severity: Severity.MEDIUM,
+      confidence: 0.6,
+      signals: [{ label: "test" }]
+    };
+    const scored = {
+      severity: Severity.HIGH,
+      confidence: 0.74,
+      signals: [{ label: "score" }]
+    };
+
+    mocks.prisma.rawArticle.findUnique.mockResolvedValue(article);
+    mocks.extractEventFromArticle.mockReturnValue(extracted);
+    mocks.scoreCandidate.mockReturnValue(scored);
+    mocks.tx.riskEvent.create.mockResolvedValue({ id: "event-1" });
+
+    const response = await promoteArticlePost(
+      jsonRequest("/api/admin/promote-article", { articleId: "article-1" }, { token: "dev-admin-token" })
+    );
+
+    await expect(response.json()).resolves.toEqual({ eventId: "event-1" });
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.$transaction).toHaveBeenCalled();
+    expect(mocks.tx.riskEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: extracted.title,
+        category: extracted.category,
+        status: EventStatus.NEEDS_REVIEW,
+        extractionSource: "rules",
+        aiEnhanced: false
+      })
+    });
+    expect(mocks.tx.rawArticle.update).toHaveBeenCalledWith({
+      where: { id: "article-1" },
+      data: { riskEventId: "event-1", aiRejected: false }
     });
   });
 });

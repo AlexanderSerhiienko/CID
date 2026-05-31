@@ -1,77 +1,90 @@
 # Crisis Intelligence Dashboard
 
-A fullstack crisis intelligence project that turns raw RSS and open-data sources into reviewed, structured risk events.
-
-The product goal is to demonstrate a realistic ingestion pipeline:
+A fullstack crisis intelligence dashboard that turns raw RSS and open-data feeds into reviewed, structured risk events for a public map and events registry.
 
 ```text
-Source -> RawArticle -> Extraction -> Normalization -> Deduplication -> Scoring -> Review -> Published RiskEvent
+Source -> RawArticle -> rules/GeoRSS extraction -> optional AI enrichment -> human review -> Published RiskEvent
 ```
 
-## Current Status
+## What It Demonstrates
 
-Full pipeline is implemented and deployed. The project runs in production on Vercel + Supabase with a daily Vercel Cron job triggering ingestion.
+- A production-style ingestion pipeline, not just an RSS reader.
+- Clear separation between raw source material (`RawArticle`) and normalized incidents (`RiskEvent`).
+- Deterministic extraction and scoring that work without AI.
+- Optional Groq enrichment for category, severity, summary, and location refinement.
+- Human review with approve, reject, edit, merge, bulk approve, and AI override flows.
+- A published event surface with a choropleth risk map, events table, detail pages, and RSS feed.
 
-Implemented:
+## Current Flow
 
-- Next.js App Router application structure
-- Prisma schema for `Source`, `RawArticle`, and `RiskEvent`
-- Source management page and API with `lastIngestedAt` and `lastError` tracking per source
-- Seed catalog with 10 official/open-data sources
-- Source enable/disable and trust score editing
-- RSS ingestion API with deterministic extraction
-- GeoRSS coordinate parsing from Atom feeds (USGS, GDACS)
-- Nominatim geocoder fallback when the location dictionary misses an entity
-- URL and content hash deduplication
-- Event similarity deduplication
-- Severity and confidence scoring rules
-- Groq AI extraction for category, severity, and summary refinement (with deterministic fallback)
-- Circuit-breaker guard on Groq to prevent ingestion stalls on API timeouts
-- Auto-publishing for high-confidence located events; looser threshold for OFFICIAL_FEED sources
-- Bulk-approve action for batch review queue processing
-- Review queue with approve/reject/edit/merge actions
-- Ranked merge suggestions with reason text
-- Persisted extraction/scoring signals for explainable review candidates
-- Review evidence with source, publication date, and raw article excerpt
-- `occurredAt` field on events + time-window filter on dashboard map
-- Timestamps and freshness indicator across events table and detail page
-- Category and severity filters on the events page
-- Pagination across events API, events page, and review queue
-- RSS 2.0 feed output at `/api/events/feed.xml`
-- `/api/health` endpoint with DB status checks
-- Lightweight admin token boundary for mutation APIs
-- Dashboard, events table, event detail page, and sources page
-- Leaflet choropleth risk map with country-level green/yellow/red polygon fills
-- Vercel Cron job (daily on Hobby plan) for automatic ingestion
-- Vercel Analytics and Speed Insights
-- Docker Compose for local PostgreSQL
-- GitHub Actions CI (typecheck + lint + test + build)
-- Unit tests for extraction, scoring, deduplication, merge, validation, and admin auth
-- Route-handler contract tests for protected mutation APIs
-- AI-native engineering workflow (`CLAUDE.md`, `agents/`, `ROADMAP.md`)
-- Custom CID MCP server for pipeline inspection
-- AI workflow automation hooks and slash commands (`.claude/`)
+1. **Sources**
+   Admins manage RSS/open-data sources, trust scores, and enabled state in `/sources`.
 
-Not yet complete:
+2. **Ingestion**
+   Vercel Cron runs daily, and admins can trigger ingestion manually through `POST /api/ingest/rss`.
+   Ingestion fetches enabled sources, deduplicates articles by URL/content hash, stores raw articles, and extracts a deterministic baseline.
 
-- Admin token auth is lightweight and not a full user/session system.
-- Full live database-backed API integration tests are still missing.
-- Extraction can still generate noisy candidates from broad news feeds.
-- Merge target suggestions are deterministic and may miss cross-feed duplicates.
+3. **AI Enrichment**
+   The review page automatically processes pending enrichment work through `POST /api/admin/process-next`.
+   AI enrichment is optional and bounded by timeout/rate-limit handling. If Groq is unavailable, the deterministic pipeline still works.
+
+4. **Review**
+   `/admin/review` separates work into practical queues:
+   - **AI Ready**: AI-confirmed events ready for review or bulk approval.
+   - **Coordinates**: events created from feeds that include coordinate data.
+   - **Needs Enrichment**: deterministic candidates waiting for AI refinement.
+   - **AI Rejected**: articles AI marked as not relevant, with a human override option.
+
+5. **Publishing**
+   Approved events become `PUBLISHED` and appear on the dashboard map, events table, detail pages, and `/api/events/feed.xml`.
+
+## Main Screens
+
+- `/`: dashboard with country-level risk map and recent published events.
+- `/events`: published event registry with filters and separate AI-reviewed vs deterministic sections.
+- `/events/[id]`: event detail page with evidence and metadata.
+- `/sources`: source catalog and source health controls.
+- `/admin/review`: admin review queue and enrichment workflow.
+
+## API Routes
+
+- `GET /api/events`: published events with pagination and filters.
+- `GET /api/events/[id]`: published event detail.
+- `GET /api/events/feed.xml`: RSS feed of published events.
+- `GET /api/sources`: list sources.
+- `POST /api/sources`: create a source, admin-protected.
+- `PATCH /api/sources/[id]`: update source settings, admin-protected.
+- `POST /api/ingest/rss`: trigger ingestion, admin-protected.
+- `POST /api/admin/process-next`: process one enrichment queue item, admin-protected.
+- `POST /api/admin/promote-article`: promote an AI-rejected raw article into review, admin-protected.
+- `POST /api/admin/bulk-approve`: publish AI-ready review events, admin-protected.
+- `PATCH /api/admin/review`: approve, reject, edit, or merge review candidates, admin-protected.
+- `GET /api/health`: application and database health check.
 
 ## Stack
 
 - Next.js 15 App Router, React 19, TypeScript
 - PostgreSQL + Prisma ORM
-- Tailwind CSS + shadcn/ui + Leaflet (choropleth risk map)
-- Groq API for optional AI extraction (with deterministic fallback)
-- Nominatim for geocoding fallback
-- Zod validation
-- Vitest
-- Docker Compose (local dev), Vercel + Supabase (production)
-- GitHub Actions CI
+- Tailwind CSS, shadcn/ui, Leaflet
+- Zod validation at API boundaries
+- Vitest for unit and route-handler tests
+- Docker Compose for local PostgreSQL
+- Vercel + Supabase for production
+- Optional Groq extraction with deterministic fallback
 
-## Core Event Categories
+## Data Model
+
+- `Source`: configured feed with trust score, enabled state, and health metadata.
+- `RawArticle`: raw ingested article with source link, content hash, AI queue flags, and optional `RiskEvent` link.
+- `RiskEvent`: normalized crisis event with category, severity, confidence, location, status, evidence, and extraction signals.
+
+Event statuses:
+
+```text
+NEEDS_REVIEW -> PUBLISHED | REJECTED
+```
+
+Event categories:
 
 - Disease outbreak
 - Natural disaster
@@ -79,52 +92,7 @@ Not yet complete:
 - Transport disruption
 - Political unrest
 - Food safety alert
-
-## Main Screens
-
-- `/`: dashboard with map and event list
-- `/events`: searchable and filterable events table
-- `/events/[id]`: event detail page
-- `/sources`: source management
-- `/admin/review`: human review queue
-
-## API Routes
-
-- `GET/POST /api/events` — list and filter events (paginated)
-- `GET /api/events/[id]` — event detail
-- `GET /api/events/feed.xml` — RSS 2.0 feed of published events
-- `GET/POST /api/sources` — list and create sources
-- `POST /api/ingest/rss` — trigger ingestion (admin-protected)
-- `PATCH /api/admin/review` — approve/reject/merge review candidates (admin-protected)
-- `GET /api/health` — DB connectivity check
-
-## AI-Native Engineering Workflow
-
-This project uses AI as part of the software development lifecycle, not as a required production dependency.
-
-The workflow is defined in `CLAUDE.md`.
-
-Groq is used for optional AI extraction in the ingestion pipeline. Deterministic rules always run first and serve as the fallback — the app works without Groq.
-
-See `ROADMAP.md` for the next planned features.
-
-## Architecture Decisions
-
-Architecture Decision Records are stored in `docs/adr/`.
-
-- [ADR 001: AI-Assisted Engineering Workflow](docs/adr/001-ai-assisted-engineering-workflow.md)
-- [ADR 002: Hybrid Extraction With Rules Before Groq](docs/adr/002-hybrid-extraction-rules-before-groq.md)
-- [ADR 003: Vercel Cron Inline Ingestion](docs/adr/003-vercel-cron-inline-ingestion.md)
-- [ADR 004: First Vertical Slice Before Feature Expansion](docs/adr/004-first-vertical-slice-before-feature-expansion.md)
-
-## Deployment
-
-Production stack: Vercel (Next.js + Cron), Supabase (PostgreSQL).
-
-Set the following environment variables in Vercel:
-- `DATABASE_URL` — Supabase connection string
-- `ADMIN_TOKEN` — secret for admin-protected routes
-- `GROQ_API_KEY` — optional, enables AI extraction
+- Unknown
 
 ## Local Development
 
@@ -134,19 +102,17 @@ Copy environment variables:
 cp .env.example .env
 ```
 
-Start dependencies:
+Start local services:
 
 ```bash
 docker compose up -d
 ```
 
-PostgreSQL is exposed on local port `5433` to avoid conflicts with a system PostgreSQL running on `5432`. The container itself still uses PostgreSQL's default internal port `5432`.
-
-Prepare the database:
+Install dependencies, migrate, and seed:
 
 ```bash
 npm install
-npx prisma migrate dev --name init
+npx prisma migrate dev
 npm run prisma:seed
 ```
 
@@ -167,18 +133,48 @@ curl -X POST http://localhost:3000/api/ingest/rss \
   -d '{}'
 ```
 
+## Environment Variables
+
+Required:
+
+- `DATABASE_URL`: PostgreSQL connection string used by the app runtime.
+- `DIRECT_URL`: direct PostgreSQL connection string used by Prisma migrations.
+- `ADMIN_TOKEN`: shared admin token for protected mutation routes.
+
+Optional:
+
+- `GROQ_API_KEY`: enables AI enrichment. The app still works without it.
+- `CRON_SECRET`: protects scheduled ingestion if enabled in deployment.
+- `REDIS_URL`: reserved for hosted queue/cache integration.
+
+For Supabase on Vercel, use the pooler URL for `DATABASE_URL` and a direct/session-compatible URL for `DIRECT_URL`.
+
 ## Verification
 
 ```bash
-npx prisma generate
 npm run typecheck
-npm run test
 npm run lint
+npm run test
 npm run build
 ```
 
+## Architecture Decisions
+
+Architecture Decision Records are stored in `docs/adr/`.
+
+- [ADR 001: AI-Assisted Engineering Workflow](docs/adr/001-ai-assisted-engineering-workflow.md)
+- [ADR 002: Hybrid Extraction With Rules Before Groq](docs/adr/002-hybrid-extraction-rules-before-groq.md)
+- [ADR 003: Vercel Cron Inline Ingestion](docs/adr/003-vercel-cron-inline-ingestion.md)
+- [ADR 004: First Vertical Slice Before Feature Expansion](docs/adr/004-first-vertical-slice-before-feature-expansion.md)
+
+## Demo Script
+
+1. Open `/` and show the risk map backed by published events.
+2. Open `/events` and point out AI-reviewed and deterministic event sections.
+3. Open `/sources` and show source trust scores and health metadata.
+4. Open `/admin/review` and explain the four queues: AI Ready, Coordinates, Needs Enrichment, AI Rejected.
+5. Approve or reject one candidate, then return to `/events` or the map to show the published surface.
+
 ## Interview Positioning
 
-This is not just an RSS parser. It is an ingestion pipeline that transforms raw source material into normalized, scored, reviewed risk events.
-
-AI is used as an engineering assistant for planning, review, testing, debugging, and documentation. The production runtime does not depend on paid AI APIs.
+This project is a realistic ingestion and review system: it fetches raw source material, normalizes it, enriches it when AI is available, preserves deterministic fallback behavior, and keeps a human in the loop before publication.

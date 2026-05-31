@@ -28,11 +28,11 @@ export function PromoteArticleButton({ articleId }: { articleId: string }) {
     }
   }
 
-  if (state === "done") return <span className="text-[11px] text-[#4edea3]">✓ Added to queue</span>;
+  if (state === "done") return <span className="text-[11px] text-[#4edea3]">Added to review</span>;
 
   return (
     <Button onClick={promote} disabled={state === "loading"} variant="secondary">
-      {state === "loading" ? "Creating…" : "Create event"}
+      {state === "loading" ? "Sending..." : "Send to review"}
     </Button>
   );
 }
