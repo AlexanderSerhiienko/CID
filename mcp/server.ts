@@ -98,7 +98,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           dryRun: {
             type: "boolean",
-            description: "If true, return what would be rejected without making changes. Default: false.",
+            description: "If true, return what would be rejected without making changes. Default: true. Set to false to apply.",
           },
         },
       },
@@ -389,7 +389,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: "maxConfidence must be a number between 0 and 1 (exclusive)." }] };
       }
 
-      const dryRun = args?.dryRun === true;
+      const dryRun = args?.dryRun !== false;
 
       const candidates = await prisma.riskEvent.findMany({
         where: {
