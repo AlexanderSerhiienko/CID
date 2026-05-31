@@ -31,8 +31,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         Authorization: `Bearer ${cronSecret}`
       },
       body: JSON.stringify({ sourceIds: remaining })
-    }).catch(() => {
-      // fire-and-forget — failure is non-fatal, next cron run will catch skipped sources
+    }).catch((e: unknown) => {
+      console.error("cron: continuation fetch failed — skipped sources will retry on next run", e);
     });
   }
 
