@@ -10,7 +10,7 @@ Source -> RawArticle -> Extraction -> Normalization -> Deduplication -> Scoring 
 
 ## Current Status
 
-Full pipeline is implemented and deployed. The project runs in production on Vercel + Supabase + Upstash Redis with a daily Vercel Cron job triggering ingestion.
+Full pipeline is implemented and deployed. The project runs in production on Vercel + Supabase with a daily Vercel Cron job triggering ingestion.
 
 Implemented:
 
@@ -38,14 +38,13 @@ Implemented:
 - Category and severity filters on the events page
 - Pagination across events API, events page, and review queue
 - RSS 2.0 feed output at `/api/events/feed.xml`
-- `/api/health` endpoint with DB and Redis status checks
+- `/api/health` endpoint with DB status checks
 - Lightweight admin token boundary for mutation APIs
 - Dashboard, events table, event detail page, and sources page
 - Leaflet choropleth risk map with country-level green/yellow/red polygon fills
-- BullMQ queue and ingestion worker entrypoint
 - Vercel Cron job (daily on Hobby plan) for automatic ingestion
 - Vercel Analytics and Speed Insights
-- Docker Compose for local PostgreSQL and Redis
+- Docker Compose for local PostgreSQL
 - GitHub Actions CI (typecheck + lint + test + build)
 - Unit tests for extraction, scoring, deduplication, merge, validation, and admin auth
 - Route-handler contract tests for protected mutation APIs
@@ -64,13 +63,12 @@ Not yet complete:
 
 - Next.js 15 App Router, React 19, TypeScript
 - PostgreSQL + Prisma ORM
-- BullMQ + Redis (ioredis)
 - Tailwind CSS + shadcn/ui + Leaflet (choropleth risk map)
 - Groq API for optional AI extraction (with deterministic fallback)
 - Nominatim for geocoding fallback
 - Zod validation
 - Vitest
-- Docker Compose (local dev), Vercel + Supabase + Upstash (production)
+- Docker Compose (local dev), Vercel + Supabase (production)
 - GitHub Actions CI
 
 ## Core Event Categories
@@ -98,7 +96,7 @@ Not yet complete:
 - `GET/POST /api/sources` — list and create sources
 - `POST /api/ingest/rss` — trigger ingestion (admin-protected)
 - `PATCH /api/admin/review` — approve/reject/merge review candidates (admin-protected)
-- `GET /api/health` — DB and Redis connectivity check
+- `GET /api/health` — DB connectivity check
 
 ## AI-Native Engineering Workflow
 
@@ -116,16 +114,15 @@ Architecture Decision Records are stored in `docs/adr/`.
 
 - [ADR 001: AI-Assisted Engineering Workflow](docs/adr/001-ai-assisted-engineering-workflow.md)
 - [ADR 002: Hybrid Extraction With Rules Before Groq](docs/adr/002-hybrid-extraction-rules-before-groq.md)
-- [ADR 003: BullMQ For Ingestion Jobs](docs/adr/003-bullmq-for-ingestion-jobs.md)
+- [ADR 003: Vercel Cron Inline Ingestion](docs/adr/003-vercel-cron-inline-ingestion.md)
 - [ADR 004: First Vertical Slice Before Feature Expansion](docs/adr/004-first-vertical-slice-before-feature-expansion.md)
 
 ## Deployment
 
-Production stack: Vercel (Next.js + Cron), Supabase (PostgreSQL), Upstash (Redis).
+Production stack: Vercel (Next.js + Cron), Supabase (PostgreSQL).
 
 Set the following environment variables in Vercel:
 - `DATABASE_URL` — Supabase connection string
-- `REDIS_URL` — Upstash Redis URL
 - `ADMIN_TOKEN` — secret for admin-protected routes
 - `GROQ_API_KEY` — optional, enables AI extraction
 

@@ -18,7 +18,7 @@ Enhance pipeline extraction with Groq API (free tier, llama3). Improves category
 
 ### Deployment
 - [x] App live on Vercel: https://crisis-intelligence-dashboard.vercel.app
-- [x] `/api/health` returns 200 with DB + Redis status
+- [x] `/api/health` returns 200 with DB status
 - [x] Full pipeline works on production (ingest → publish)
 - [x] CI deploys automatically on push to `main`
 - [x] Vercel Cron: daily ingestion at 8am UTC (`0 8 * * *`)
