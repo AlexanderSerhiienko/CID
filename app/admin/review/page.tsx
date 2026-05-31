@@ -205,21 +205,70 @@ export default async function ReviewPage({
                       </div>
 
                       <h3 className="text-base font-semibold text-[#e1e2ec] mb-1">{event.title}</h3>
-                      <p className="text-sm text-[#c2c6d6] line-clamp-2 mb-2">{event.summary}</p>
+                      <p className="text-sm text-[#c2c6d6] line-clamp-2 mb-3">{event.summary}</p>
 
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-[#8c909f]">
-                        {(event.city || event.country) && (
-                          <span>
-                            📍 {[event.city, event.country].filter(Boolean).join(", ")}
-                            {" · "}loc. {Math.round(event.locationConfidence * 100)}%
-                          </span>
-                        )}
-                        {uniqueSources.length > 0 && (
-                          <span className="text-[#8c909f]">
-                            Sources: {uniqueSources.join(", ")}
-                          </span>
-                        )}
+                      {/* Data quality grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                        {/* Location */}
+                        <div className="rounded border border-[#2d2d2d] bg-[#191b23] px-2.5 py-1.5">
+                          <div className="text-[9px] font-semibold uppercase tracking-widest text-[#8c909f] mb-0.5">Location</div>
+                          {event.city || event.country ? (
+                            <div className="text-[11px] text-[#e1e2ec]">
+                              {[event.city, event.country].filter(Boolean).join(", ")}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-[#ff4d4f]">missing</div>
+                          )}
+                        </div>
+
+                        {/* Coordinates */}
+                        <div className="rounded border border-[#2d2d2d] bg-[#191b23] px-2.5 py-1.5">
+                          <div className="text-[9px] font-semibold uppercase tracking-widest text-[#8c909f] mb-0.5">Coordinates</div>
+                          {event.latitude != null && event.longitude != null ? (
+                            <div className="text-[11px] font-mono text-[#4edea3]">
+                              {event.latitude.toFixed(3)}, {event.longitude.toFixed(3)}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-[#ffb786]">no coords</div>
+                          )}
+                        </div>
+
+                        {/* Location confidence */}
+                        <div className="rounded border border-[#2d2d2d] bg-[#191b23] px-2.5 py-1.5">
+                          <div className="text-[9px] font-semibold uppercase tracking-widest text-[#8c909f] mb-0.5">Loc. confidence</div>
+                          <div className={`text-[11px] font-mono ${
+                            event.locationConfidence >= 0.75 ? "text-[#4edea3]" :
+                            event.locationConfidence >= 0.5  ? "text-[#ffb786]" :
+                            "text-[#ff4d4f]"
+                          }`}>
+                            {Math.round(event.locationConfidence * 100)}%
+                            {" · "}
+                            {event.locationConfidence >= 0.75 ? "precise" :
+                             event.locationConfidence >= 0.5  ? "country" : "low"}
+                          </div>
+                        </div>
+
+                        {/* Source & occurred */}
+                        <div className="rounded border border-[#2d2d2d] bg-[#191b23] px-2.5 py-1.5">
+                          <div className="text-[9px] font-semibold uppercase tracking-widest text-[#8c909f] mb-0.5">Extraction · Occurred</div>
+                          <div className="text-[11px] text-[#c2c6d6]">
+                            <span className={`font-mono ${
+                              event.extractionSource === "ai" ? "text-[#3b82f6]" :
+                              event.extractionSource === "georss" ? "text-[#4edea3]" :
+                              "text-[#8c909f]"
+                            }`}>{event.extractionSource}</span>
+                            {event.occurredAt && (
+                              <span className="text-[#8c909f]"> · {event.occurredAt.toISOString().slice(0, 10)}</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
+
+                      {uniqueSources.length > 0 && (
+                        <div className="text-[10px] text-[#8c909f]">
+                          Sources: {uniqueSources.join(", ")}
+                        </div>
+                      )}
                     </div>
 
                     <div className="shrink-0">
