@@ -87,15 +87,6 @@ export default async function DashboardPage({
       {/* Map area — 70% */}
       <section className="flex-1 relative bg-[#0b0e15]">
         <EventMapClient events={mapEvents} />
-        {/* Overlay info */}
-        <div className="absolute bottom-6 left-6 z-10 pointer-events-none">
-          <div className="surface-card rounded-lg p-4 backdrop-blur-sm bg-[#1a1a1a]/90 max-w-xs">
-            <p className="text-sm font-semibold text-[#e1e2ec]">Global Operations Overview</p>
-            <p className="text-xs text-[#c2c6d6] mt-0.5">
-              Live incident tracking enabled
-            </p>
-          </div>
-        </div>
       </section>
 
       {/* Sidebar — 30% */}
