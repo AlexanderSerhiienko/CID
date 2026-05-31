@@ -111,7 +111,12 @@ describe("protected API route contracts", () => {
 
   it("runs RSS ingestion for enabled sources with a valid admin token", async () => {
     mocks.prisma.source.findMany.mockResolvedValue([{ id: "source-1", name: "WHO", enabled: true }]);
-    mocks.ingestRssSource.mockResolvedValue({ rawArticles: 2, candidateEvents: 1 });
+    mocks.ingestRssSource.mockResolvedValue({
+      sourceId: "source-1",
+      createdArticles: 2,
+      duplicateArticles: 0,
+      candidateEvents: 1
+    });
 
     const response = await ingestPost(
       jsonRequest("/api/ingest/rss", {}, { token: "dev-admin-token" })
@@ -123,7 +128,7 @@ describe("protected API route contracts", () => {
           sourceId: "source-1",
           sourceName: "WHO",
           ok: true,
-          result: { rawArticles: 2, candidateEvents: 1 }
+          result: { sourceId: "source-1", createdArticles: 2, duplicateArticles: 0, candidateEvents: 1 }
         }
       ]
     });
