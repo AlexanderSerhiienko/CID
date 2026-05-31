@@ -154,7 +154,10 @@ export async function extractWithAI(
     const parsed = JSON.parse(json) as unknown;
     const result = AiExtractionSchema.safeParse(parsed);
 
-    if (!result.success) return null;
+    if (!result.success) {
+      console.error("ai-extraction: schema validation failed", result.error.flatten(), { title });
+      return null;
+    }
 
     return result.data as AiExtraction;
   } catch {
