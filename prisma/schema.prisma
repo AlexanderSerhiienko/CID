@@ -38,11 +38,6 @@ enum EventStatus {
   REJECTED
 }
 
-enum ExtractionSource {
-  RULES
-  AI
-  GEORSS
-}
 
 model Source {
   id             String       @id @default(cuid())
@@ -93,7 +88,7 @@ model RiskEvent {
   signals            Json          @default("[]")
   sourceUrl          String
   occurredAt         DateTime?     // earliest publishedAt from associated RawArticles; null if unknown
-  extractionSource   ExtractionSource @default(RULES)
+  extractionSource   String        @default("rules") // "rules" | "ai" | "georss"
   aiEnhanced         Boolean       @default(false)
   geocoderUsed       Boolean       @default(false)
   rawArticles        RawArticle[]

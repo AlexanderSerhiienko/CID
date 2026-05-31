@@ -9,7 +9,7 @@
 import { prisma } from "@/lib/db";
 import { extractWithAIThrottled, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { geocodeLocation } from "@/lib/pipeline/geocoder";
-import { EventStatus, ExtractionSource, type Prisma } from "@prisma/client";
+import { EventStatus, type Prisma } from "@prisma/client";
 
 export type EnrichResult = {
   processed: number;
@@ -20,7 +20,7 @@ export type EnrichResult = {
 
 export async function enrichEventsWithGroq(): Promise<EnrichResult> {
   const events = await prisma.riskEvent.findMany({
-    where: { aiEnhanced: false, extractionSource: ExtractionSource.RULES },
+    where: { aiEnhanced: false, extractionSource: "rules" },
     include: {
       rawArticles: { take: 1, select: { title: true, rawText: true } }
     }
@@ -98,7 +98,7 @@ export async function enrichEventsWithGroq(): Promise<EnrichResult> {
       severity: aiResult.severity,
       summary: aiResult.summary,
       aiEnhanced: true,
-      extractionSource: ExtractionSource.AI,
+      extractionSource: "ai",
       signals: updatedSignals,
       ...locationUpdate
     };
