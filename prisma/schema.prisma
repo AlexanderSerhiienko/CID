@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // pooler (port 6543) — used for queries at runtime
+  directUrl = env("DIRECT_URL")     // direct (port 5432) — used by prisma migrate
 }
 
 enum SourceType {
@@ -37,11 +38,6 @@ enum EventStatus {
   REJECTED
 }
 
-enum ExtractionSource {
-  RULES
-  AI
-  GEORSS
-}
 
 model Source {
   id             String       @id @default(cuid())
@@ -92,7 +88,7 @@ model RiskEvent {
   signals            Json          @default("[]")
   sourceUrl          String
   occurredAt         DateTime?     // earliest publishedAt from associated RawArticles; null if unknown
-  extractionSource   ExtractionSource @default(RULES)
+  extractionSource   String        @default("rules") // "rules" | "ai" | "georss"
   aiEnhanced         Boolean       @default(false)
   geocoderUsed       Boolean       @default(false)
   rawArticles        RawArticle[]

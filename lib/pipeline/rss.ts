@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import { EventCategory, EventStatus, ExtractionSource } from "@prisma/client";
+import { EventCategory, EventStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { contentHash } from "@/lib/pipeline/hash";
 import { extractEventFromArticle, CONFIDENCE_CATEGORY_BONUS, type PipelineSignal } from "@/lib/pipeline/extraction";
@@ -303,7 +303,7 @@ export async function ingestRssSource(sourceId: string) {
     // AI is now the primary source for category, severity, summary, and location.
     // Rules are the fallback when AI is unavailable.
     let aiEnhanced = false;
-    let extractionSource: ExtractionSource = geoCoords ? ExtractionSource.GEORSS : ExtractionSource.RULES;
+    let extractionSource = geoCoords ? "georss" : "rules";
     if (!geoCoords) {
       const aiResult = await extractWithAIThrottled(title, rawText);
       if (aiResult) {
@@ -372,7 +372,7 @@ export async function ingestRssSource(sourceId: string) {
           weight: 0.1
         });
         aiEnhanced = true;
-        extractionSource = ExtractionSource.AI;
+        extractionSource = "ai";
       }
     }
 
