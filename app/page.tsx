@@ -3,7 +3,7 @@ import { EventStatus, Severity } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { EventMapClient } from "@/components/event-map-client";
 import { prisma } from "@/lib/db";
-import { formatRelativeTime, hoursUntilNextDailyRun } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -81,7 +81,6 @@ export default async function DashboardPage({
       })
     ]);
 
-  const nextUpdateHours = hoursUntilNextDailyRun(now);
 
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden max-w-[1600px] mx-auto w-full">
@@ -93,9 +92,7 @@ export default async function DashboardPage({
           <div className="surface-card rounded-lg p-4 backdrop-blur-sm bg-[#1a1a1a]/90 max-w-xs">
             <p className="text-sm font-semibold text-[#e1e2ec]">Global Operations Overview</p>
             <p className="text-xs text-[#c2c6d6] mt-0.5">
-              {lastIngested?.lastIngestedAt
-                ? `Updated ${formatRelativeTime(lastIngested.lastIngestedAt, now)} · next in ~${nextUpdateHours}h`
-                : "Live incident tracking enabled"}
+              Live incident tracking enabled
             </p>
           </div>
         </div>
