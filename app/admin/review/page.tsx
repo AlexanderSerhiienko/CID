@@ -36,7 +36,7 @@ export default async function ReviewPage({
   const page = Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage);
   const skip = (page - 1) * PAGE_SIZE;
 
-  const [events, total, officialCount, mergeTargets, pipelineStats, aiPendingCount] = await Promise.all([
+  const [events, total, officialCount, mergeTargets, pipelineStats, aiPendingCount, pendingArticles] = await Promise.all([
     prisma.riskEvent.findMany({
       where: { status: EventStatus.NEEDS_REVIEW },
       orderBy: { createdAt: "asc" },
@@ -89,7 +89,13 @@ export default async function ReviewPage({
         count(*) FILTER (WHERE status = 'PUBLISHED')::int                        AS auto_published
       FROM "RiskEvent"
     `,
-    prisma.rawArticle.count({ where: { aiPending: true } })
+    prisma.rawArticle.count({ where: { aiPending: true } }),
+    prisma.rawArticle.findMany({
+      where: { aiPending: true },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { id: true, title: true, url: true, createdAt: true, source: { select: { name: true } } }
+    })
   ]);
 
   const stats = pipelineStats[0];
@@ -155,6 +161,28 @@ export default async function ReviewPage({
             <div className="text-[10px] font-semibold uppercase tracking-widest text-[#f59e0b]/70 mb-1">AI Pending</div>
             <div className="text-2xl font-bold text-[#f59e0b]">{statAiPending}</div>
             <div className="text-[10px] text-[#8c909f] mt-0.5">{statAiPending === 0 ? "all enriched" : "awaiting enrichment"}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending AI enrichment */}
+      {pendingArticles.length > 0 && (
+        <div className="mb-6">
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-[#f59e0b] mb-3">
+            ⏳ Pending AI enrichment ({statAiPending})
+          </div>
+          <div className="space-y-2">
+            {pendingArticles.map((article) => (
+              <div key={article.id} className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-[#e1e2ec] truncate">{article.title}</div>
+                  <div className="text-[10px] text-[#8c909f] mt-0.5">
+                    {article.source.name} · {article.createdAt.toISOString().slice(0, 16).replace("T", " ")}
+                  </div>
+                </div>
+                <EnrichButton pendingCount={1} articleId={article.id} />
+              </div>
+            ))}
           </div>
         </div>
       )}

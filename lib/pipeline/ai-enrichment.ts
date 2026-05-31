@@ -29,13 +29,18 @@ export type EnrichmentResult = {
   remaining: number; // aiPending=true articles still waiting after this batch
 };
 
-export async function enrichPendingArticles(batchSize = BATCH_SIZE): Promise<EnrichmentResult> {
+export async function enrichPendingArticles(
+  batchSize = BATCH_SIZE,
+  articleId?: string
+): Promise<EnrichmentResult> {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1_000);
 
   const articles = await prisma.rawArticle.findMany({
-    where: { aiPending: true, createdAt: { gte: since } },
+    where: articleId
+      ? { id: articleId, aiPending: true }
+      : { aiPending: true, createdAt: { gte: since } },
     orderBy: { createdAt: "asc" },
-    take: batchSize,
+    take: articleId ? 1 : batchSize,
     include: { source: { select: { id: true, trustScore: true, type: true } } }
   });
 
