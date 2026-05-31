@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
-import { enrichEventsWithGroq } from "@/lib/pipeline/enrich";
+import { enrichPendingArticles } from "@/lib/pipeline/ai-enrichment";
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
-  const authError = requireAdmin(req);
-  if (authError) return authError;
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
 
-  const result = await enrichEventsWithGroq();
+  const result = await enrichPendingArticles();
   return NextResponse.json(result);
 }

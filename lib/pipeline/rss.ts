@@ -2,11 +2,9 @@ import Parser from "rss-parser";
 import { EventCategory, EventStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { contentHash } from "@/lib/pipeline/hash";
-import { extractEventFromArticle, CONFIDENCE_CATEGORY_BONUS, type PipelineSignal } from "@/lib/pipeline/extraction";
+import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
-import { geocodeLocation } from "@/lib/pipeline/geocoder";
-import { extractWithAIThrottled, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
@@ -210,232 +208,128 @@ export async function ingestRssSource(sourceId: string) {
       }
     }
 
-    // Nominatim: call when no GeoRSS and no city-level precision yet.
-    // country may already be set from the static dictionary (centroid coords),
-    // but Nominatim can refine to an actual city coordinate.
-    let geocoderUsed = false;
-    if (!geoCoords && extracted.city === null && extracted.isLikelyRiskEvent) {
-      const query = extracted.country
-        ? `${title}, ${extracted.country}`
-        : title;
-      const geocoded = await geocodeLocation(query);
-      if (geocoded) {
-        geocoderUsed = true;
-        // Trust existing static-dict country over Nominatim's country string
-        if (!extracted.country) extracted.country = geocoded.country;
-        extracted.latitude = geocoded.lat;
-        extracted.longitude = geocoded.lon;
-        extracted.locationConfidence = Math.max(extracted.locationConfidence, geocoded.confidence);
-        extracted.signals.push({
-          kind: "location",
-          label: "location:nominatim",
-          detail: `Geocoded via Nominatim: ${geocoded.country} (${geocoded.lat.toFixed(4)}, ${geocoded.lon.toFixed(4)})`,
-          weight: geocoded.confidence
+    if (geoCoords) {
+      // ── GeoRSS PATH ────────────────────────────────────────────────────────
+      // Coordinates come from the feed — create RawArticle + RiskEvent immediately.
+      // No AI enrichment needed: location is already precise.
+
+      if (!extracted.isLikelyRiskEvent) {
+        await prisma.rawArticle.create({
+          data: { sourceId: source.id, title, url: itemUrl, publishedAt, contentHash: hash, rawText }
         });
+        createdArticles += 1;
+        continue;
       }
-    }
 
-    if (!extracted.isLikelyRiskEvent) {
-      // Non-risk article: create the raw record only (no transaction needed — single write)
-      await prisma.rawArticle.create({
-        data: {
-          sourceId: source.id,
-          title,
-          url: itemUrl,
-          publishedAt,
-          contentHash: hash,
-          rawText
-        }
+      const geoDuplicate = recentEvents
+        .filter((e) => e.category === extracted.category && (extracted.country === null || e.country === extracted.country))
+        .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e));
+
+      if (geoDuplicate) {
+        await prisma.$transaction(async (tx) => {
+          const article = await tx.rawArticle.create({
+            data: { sourceId: source.id, title, url: itemUrl, publishedAt, contentHash: hash, rawText }
+          });
+          await tx.rawArticle.update({ where: { id: article.id }, data: { riskEventId: geoDuplicate.id } });
+          await tx.riskEvent.update({
+            where: { id: geoDuplicate.id },
+            data: { confidence: Math.min(1, geoDuplicate.confidence + DUPLICATE_CONFIDENCE_INCREMENT) }
+          });
+        });
+        geoDuplicate.confidence = Math.min(1, geoDuplicate.confidence + DUPLICATE_CONFIDENCE_INCREMENT);
+        createdArticles += 1;
+        continue;
+      }
+
+      const geoScored = scoreCandidate({
+        category: extracted.category,
+        severity: extracted.severity,
+        confidence: extracted.confidence,
+        locationConfidence: extracted.locationConfidence,
+        source,
+        rawText
       });
-      createdArticles += 1;
-      continue;
-    }
 
-    // Event dedup via in-memory filter — run before AI extraction so:
-    // (a) we use the rules-based category that is consistent with how existing events
-    //     were classified when they were first created, and
-    // (b) we avoid wasting Groq API calls on articles that turn out to be duplicates.
-    const duplicateEvent = recentEvents
-      .filter(
-        (e) =>
-          e.category === extracted.category &&
-          (extracted.country === null || e.country === extracted.country)
-      )
-      .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e));
-
-    if (duplicateEvent) {
-      // Atomic: create article + link to existing event.
-      // In-memory confidence is updated AFTER the transaction commits so that
-      // a DB failure leaves the snapshot consistent with the database — if the
-      // transaction throws, the exception propagates and the line below is never
-      // reached, preserving the invariant for any subsequent duplicates in this batch.
-      await prisma.$transaction(async (tx) => {
+      const geoEvent = await prisma.$transaction(async (tx) => {
         const article = await tx.rawArticle.create({
-          data: {
-            sourceId: source.id,
-            title,
-            url: itemUrl,
-            publishedAt,
-            contentHash: hash,
-            rawText
-          }
+          data: { sourceId: source.id, title, url: itemUrl, publishedAt, contentHash: hash, rawText }
         });
-        await tx.rawArticle.update({
-          where: { id: article.id },
-          data: { riskEventId: duplicateEvent.id }
-        });
-        await tx.riskEvent.update({
-          where: { id: duplicateEvent.id },
+        return tx.riskEvent.create({
           data: {
-            confidence: Math.min(1, duplicateEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT)
+            title: extracted.title,
+            summary: extracted.summary,
+            category: extracted.category,
+            country: extracted.country,
+            city: extracted.city,
+            latitude: extracted.latitude,
+            longitude: extracted.longitude,
+            locationConfidence: extracted.locationConfidence,
+            severity: geoScored.severity,
+            confidence: geoScored.confidence,
+            status: geoScored.status,
+            signals: [...extracted.signals, ...geoScored.signals],
+            sourceUrl: itemUrl,
+            occurredAt: publishedAt ?? undefined,
+            rawArticles: { connect: { id: article.id } },
+            extractionSource: "georss",
+            aiEnhanced: false,
+            geocoderUsed: false
           }
         });
       });
-      // Keep in-memory snapshot current so additional duplicates in this batch
-      // each get a fresh increment instead of all writing the same stale value.
-      duplicateEvent.confidence = Math.min(1, duplicateEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT);
+
+      recentEvents.push({
+        id: geoEvent.id, title: geoEvent.title, summary: geoEvent.summary,
+        category: geoEvent.category, country: geoEvent.country, city: geoEvent.city,
+        confidence: geoEvent.confidence, createdAt: geoEvent.createdAt
+      });
       createdArticles += 1;
-      continue;
-    }
+      candidateEvents += 1;
 
-    // AI extraction: rate-limited via extractWithAIThrottled (2.1 s between calls).
-    // Runs after dedup to avoid wasting Groq calls on duplicate articles.
-    // Skipped for GeoRSS feeds (coordinates already precise).
-    // AI is the primary source for category, severity, summary, and location;
-    // rules are the fallback when AI is unavailable or returns null.
-    let aiEnhanced = false;
-    let extractionSource = geoCoords ? "georss" : "rules";
-    if (!geoCoords) {
-      const aiResult = await extractWithAIThrottled(title, rawText);
-      if (aiResult) {
-        if (!aiResult.isRiskEvent) {
-          // AI determined this is not an active risk event (policy report, stats, etc.) —
-          // store raw record only and skip event creation.
-          await prisma.rawArticle.create({
-            data: {
-              sourceId: source.id,
-              title,
-              url: itemUrl,
-              publishedAt,
-              contentHash: hash,
-              rawText
-            }
-          });
-          createdArticles += 1;
-          continue;
-        }
+    } else {
+      // ── NON-GeoRSS PATH ────────────────────────────────────────────────────
+      // Save RawArticle only. AI enrichment (Groq + Nominatim + scoring) runs
+      // separately via POST /api/admin/enrich, keeping ingestion fast.
 
-        // Apply AI category/severity/summary as primary source.
-        // If AI upgrades from UNKNOWN to a concrete category, apply the missed confidence bonus.
-        if (extracted.category === EventCategory.UNKNOWN && aiResult.category !== EventCategory.UNKNOWN) {
-          extracted.confidence = Math.min(1, Number((extracted.confidence + CONFIDENCE_CATEGORY_BONUS).toFixed(2)));
-        }
-        extracted.category = aiResult.category;
-        extracted.severity = aiResult.severity;
-        extracted.summary = aiResult.summary;
-
-        // Apply AI-extracted location when rules didn't find a city-level match.
-        // AI city+country feeds Nominatim for precise coordinates.
-        if (aiResult.city && extracted.city === null && !geocoderUsed) {
-          const aiCountry = aiResult.country ?? extracted.country;
-          const query = aiCountry ? `${aiResult.city}, ${aiCountry}` : aiResult.city;
-          const geocoded = await geocodeLocation(query);
-          if (geocoded) {
-            geocoderUsed = true;
-            extracted.city = aiResult.city;
-            if (!extracted.country) extracted.country = geocoded.country;
-            extracted.latitude = geocoded.lat;
-            extracted.longitude = geocoded.lon;
-            extracted.locationConfidence = Math.max(extracted.locationConfidence, geocoded.confidence);
-            extracted.signals.push({
-              kind: "location",
-              label: "location:ai-city",
-              detail: `City extracted by AI: "${aiResult.city}" → geocoded (${geocoded.lat.toFixed(4)}, ${geocoded.lon.toFixed(4)})`,
-              weight: geocoded.confidence
-            });
-          }
-        } else if (aiResult.country && extracted.country === null) {
-          // AI found country but no city — use as country-level fallback
-          extracted.country = aiResult.country;
-          extracted.signals.push({
-            kind: "location",
-            label: "location:ai-country",
-            detail: `Country extracted by AI: "${aiResult.country}"`,
-            weight: 0.6
-          });
-          if (extracted.locationConfidence === 0) extracted.locationConfidence = 0.6;
-        }
-
-        extracted.signals.push({
-          kind: "category",
-          label: "ai:groq_extraction",
-          detail: `Category, severity, and location extracted by Groq (${GROQ_MODEL}).`,
-          weight: 0.1
+      if (!extracted.isLikelyRiskEvent) {
+        // Deterministic rules say this is not a risk event — store for audit, skip AI.
+        await prisma.rawArticle.create({
+          data: { sourceId: source.id, title, url: itemUrl, publishedAt, contentHash: hash, rawText, aiPending: false }
         });
-        aiEnhanced = true;
-        extractionSource = "ai";
+        createdArticles += 1;
+        continue;
       }
+
+      // Check if this article covers an event already in the DB (GeoRSS or AI-enriched).
+      // Category may be UNKNOWN here (rules-only) so dedup has limited recall —
+      // the AI enrichment step re-checks after Groq resolves the category.
+      const existingEvent = recentEvents
+        .filter((e) => e.category === extracted.category && (extracted.country === null || e.country === extracted.country))
+        .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e));
+
+      if (existingEvent) {
+        await prisma.$transaction(async (tx) => {
+          const article = await tx.rawArticle.create({
+            data: { sourceId: source.id, title, url: itemUrl, publishedAt, contentHash: hash, rawText, aiPending: false }
+          });
+          await tx.rawArticle.update({ where: { id: article.id }, data: { riskEventId: existingEvent.id } });
+          await tx.riskEvent.update({
+            where: { id: existingEvent.id },
+            data: { confidence: Math.min(1, existingEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT) }
+          });
+        });
+        existingEvent.confidence = Math.min(1, existingEvent.confidence + DUPLICATE_CONFIDENCE_INCREMENT);
+        createdArticles += 1;
+        continue;
+      }
+
+      // Queue for AI enrichment — no RiskEvent created yet.
+      await prisma.rawArticle.create({
+        data: { sourceId: source.id, title, url: itemUrl, publishedAt, contentHash: hash, rawText, aiPending: true }
+      });
+      createdArticles += 1;
+      candidateEvents += 1; // pending enrichment
     }
-
-    // Score only when actually creating a new event — not needed for the duplicate path above
-    const scored = scoreCandidate({
-      category: extracted.category,
-      severity: extracted.severity,
-      confidence: extracted.confidence,
-      locationConfidence: extracted.locationConfidence,
-      source,
-      rawText
-    });
-
-    // Atomic: create article + new event together so a crash between them leaves no orphan
-    const newEvent = await prisma.$transaction(async (tx) => {
-      const article = await tx.rawArticle.create({
-        data: {
-          sourceId: source.id,
-          title,
-          url: itemUrl,
-          publishedAt,
-          contentHash: hash,
-          rawText
-        }
-      });
-      return tx.riskEvent.create({
-        data: {
-          title: extracted.title,
-          summary: extracted.summary,
-          category: extracted.category,
-          country: extracted.country,
-          city: extracted.city,
-          latitude: extracted.latitude,
-          longitude: extracted.longitude,
-          locationConfidence: extracted.locationConfidence,
-          severity: scored.severity,
-          confidence: scored.confidence,
-          status: scored.status,
-          signals: [...extracted.signals, ...scored.signals],
-          sourceUrl: itemUrl,
-          occurredAt: publishedAt ?? undefined,
-          rawArticles: { connect: { id: article.id } },
-          extractionSource,
-          aiEnhanced,
-          geocoderUsed
-        }
-      });
-    });
-
-    // Keep dedup cache current so later items in this batch can match the new event
-    recentEvents.push({
-      id: newEvent.id,
-      title: newEvent.title,
-      summary: newEvent.summary,
-      category: newEvent.category,
-      country: newEvent.country,
-      city: newEvent.city,
-      confidence: newEvent.confidence,
-      createdAt: newEvent.createdAt
-    });
-    createdArticles += 1;
-    candidateEvents += 1;
   }
 
   } catch (err) {

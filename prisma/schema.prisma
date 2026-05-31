@@ -66,10 +66,12 @@ model RawArticle {
   rawText     String
   riskEventId String?
   riskEvent   RiskEvent?      @relation(fields: [riskEventId], references: [id], onDelete: SetNull)
+  aiPending   Boolean         @default(false) // true = ingested, awaiting AI enrichment step
   createdAt   DateTime        @default(now())
 
   @@index([sourceId])
   @@index([publishedAt])
+  @@index([aiPending])
 }
 
 model RiskEvent {

@@ -3,6 +3,7 @@ import { EventStatus, Prisma, Severity, SourceType } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { ReviewActions } from "@/components/review-actions";
 import { BulkApproveButton } from "@/components/bulk-approve-button";
+import { EnrichButton } from "@/components/enrich-button";
 import { AdminGate } from "@/components/admin-gate";
 import { prisma } from "@/lib/db";
 import { rankMergeSuggestions } from "@/lib/review/merge-suggestions";
@@ -35,7 +36,7 @@ export default async function ReviewPage({
   const page = Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage);
   const skip = (page - 1) * PAGE_SIZE;
 
-  const [events, total, officialCount, mergeTargets, pipelineStats] = await Promise.all([
+  const [events, total, officialCount, mergeTargets, pipelineStats, aiPendingCount] = await Promise.all([
     prisma.riskEvent.findMany({
       where: { status: EventStatus.NEEDS_REVIEW },
       orderBy: { createdAt: "asc" },
@@ -83,11 +84,12 @@ export default async function ReviewPage({
       SELECT
         count(*)::int                                                             AS total,
         count(*) FILTER (WHERE "aiEnhanced" = true)::int                         AS ai_extraction,
-        count(*) FILTER (WHERE signals::text LIKE '%location:ai-enriched%')::int AS ai_location,
+        count(*) FILTER (WHERE signals::text LIKE '%location:ai-city%')::int     AS ai_location,
         count(*) FILTER (WHERE "geocoderUsed" = true)::int                       AS geocoder_used,
         count(*) FILTER (WHERE status = 'PUBLISHED')::int                        AS auto_published
       FROM "RiskEvent"
-    `
+    `,
+    prisma.rawArticle.count({ where: { aiPending: true } })
   ]);
 
   const stats = pipelineStats[0];
@@ -96,6 +98,7 @@ export default async function ReviewPage({
   const statAiLocation = Number(stats.ai_location);
   const statGeocoderUsed = Number(stats.geocoder_used);
   const statAutoPublished = Number(stats.auto_published);
+  const statAiPending = aiPendingCount;
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -113,12 +116,15 @@ export default async function ReviewPage({
             )}
           </p>
         </div>
-        {officialCount > 0 && <BulkApproveButton pendingCount={officialCount} />}
+        <div className="flex items-center gap-3">
+          {officialCount > 0 && <BulkApproveButton pendingCount={officialCount} />}
+          {statAiPending > 0 && <EnrichButton pendingCount={statAiPending} />}
+        </div>
       </div>
 
       {/* Pipeline AI stats */}
-      {statTotal > 0 && (
-        <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+      {(statTotal > 0 || statAiPending > 0) && (
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-6 gap-3">
           <div className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3">
             <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Total events</div>
             <div className="text-2xl font-bold text-[#e1e2ec]">{statTotal}</div>
@@ -137,15 +143,18 @@ export default async function ReviewPage({
             <div className="text-[10px] font-semibold uppercase tracking-widest text-[#a78bfa]/70 mb-1">AI location</div>
             <div className="text-2xl font-bold text-[#a78bfa]">{statAiLocation}</div>
             <div className="text-[10px] text-[#8c909f] mt-0.5">
-              {statAiLocation === 0
-                ? "none yet"
-                : `${Math.round(statAiLocation / statTotal * 100)}% of total`}
+              {statAiLocation === 0 ? "none yet" : `${Math.round(statAiLocation / statTotal * 100)}% of total`}
             </div>
           </div>
           <div className="rounded-lg border border-[#4edea3]/30 bg-[#4edea3]/5 px-4 py-3">
             <div className="text-[10px] font-semibold uppercase tracking-widest text-[#4edea3]/70 mb-1">Geocoded</div>
             <div className="text-2xl font-bold text-[#4edea3]">{statGeocoderUsed}</div>
             <div className="text-[10px] text-[#8c909f] mt-0.5">{statTotal > 0 ? Math.round(statGeocoderUsed / statTotal * 100) : 0}% of total</div>
+          </div>
+          <div className="rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/5 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#f59e0b]/70 mb-1">AI Pending</div>
+            <div className="text-2xl font-bold text-[#f59e0b]">{statAiPending}</div>
+            <div className="text-[10px] text-[#8c909f] mt-0.5">{statAiPending === 0 ? "all enriched" : "awaiting enrichment"}</div>
           </div>
         </div>
       )}
