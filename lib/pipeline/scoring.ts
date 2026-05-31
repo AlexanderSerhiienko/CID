@@ -91,26 +91,15 @@ export function scoreCandidate(input: {
 
   const isOfficialFeed = input.source.type === SourceType.OFFICIAL_FEED;
 
-  // OFFICIAL_FEED sources auto-publish at a lower threshold:
-  // confidence >= 0.6, severity >= MEDIUM, known category.
-  // These are curated, high-trust feeds (WHO, USGS, CDC, GDACS) that rarely produce false positives.
-  const canAutoPublishAsOfficial =
-    isOfficialFeed &&
-    confidence >= OFFICIAL_FEED_CONFIDENCE_THRESHOLD &&
-    input.category !== EventCategory.UNKNOWN &&
-    (severity === Severity.MEDIUM || severity === Severity.HIGH || severity === Severity.CRITICAL);
+  const shouldAutoPublish = canAutoPublish({
+    confidence,
+    locationConfidence: input.locationConfidence,
+    severity,
+    category: input.category,
+    isOfficialFeed
+  });
 
-  // Standard threshold: high confidence + location resolved + high severity.
-  const canAutoPublishStandard =
-    !isOfficialFeed &&
-    confidence >= AUTO_PUBLISH_CONFIDENCE_THRESHOLD &&
-    input.locationConfidence >= AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD &&
-    input.category !== EventCategory.UNKNOWN &&
-    (severity === Severity.HIGH || severity === Severity.CRITICAL);
-
-  const canAutoPublish = canAutoPublishAsOfficial || canAutoPublishStandard;
-
-  if (canAutoPublish) {
+  if (shouldAutoPublish) {
     const reason = isOfficialFeed
       ? "Official-feed event at MEDIUM+ severity auto-published without manual review."
       : "High-confidence, high-severity located event can be published without manual review.";
@@ -121,7 +110,7 @@ export function scoreCandidate(input: {
     });
   }
 
-  const status = canAutoPublish ? EventStatus.PUBLISHED : EventStatus.NEEDS_REVIEW;
+  const status = shouldAutoPublish ? EventStatus.PUBLISHED : EventStatus.NEEDS_REVIEW;
 
   return {
     confidence: Number(confidence.toFixed(2)),
@@ -129,4 +118,29 @@ export function scoreCandidate(input: {
     status,
     signals
   };
+}
+
+export function canAutoPublish(input: {
+  confidence: number;
+  locationConfidence: number;
+  severity: Severity;
+  category: EventCategory;
+  isOfficialFeed: boolean;
+}): boolean {
+  const canAutoPublishAsOfficial =
+    input.isOfficialFeed &&
+    input.confidence >= OFFICIAL_FEED_CONFIDENCE_THRESHOLD &&
+    input.category !== EventCategory.UNKNOWN &&
+    (input.severity === Severity.MEDIUM ||
+      input.severity === Severity.HIGH ||
+      input.severity === Severity.CRITICAL);
+
+  const canAutoPublishStandard =
+    !input.isOfficialFeed &&
+    input.confidence >= AUTO_PUBLISH_CONFIDENCE_THRESHOLD &&
+    input.locationConfidence >= AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD &&
+    input.category !== EventCategory.UNKNOWN &&
+    (input.severity === Severity.HIGH || input.severity === Severity.CRITICAL);
+
+  return canAutoPublishAsOfficial || canAutoPublishStandard;
 }

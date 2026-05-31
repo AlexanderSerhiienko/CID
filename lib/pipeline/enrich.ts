@@ -9,7 +9,8 @@
 import { prisma } from "@/lib/db";
 import { extractWithAIThrottled, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { geocodeLocation } from "@/lib/pipeline/geocoder";
-import { EventStatus, type Prisma } from "@prisma/client";
+import { canAutoPublish } from "@/lib/pipeline/scoring";
+import { EventStatus, SourceType, type Prisma } from "@prisma/client";
 
 export type EnrichResult = {
   processed: number;
@@ -22,7 +23,7 @@ export async function enrichEventsWithGroq(): Promise<EnrichResult> {
   const events = await prisma.riskEvent.findMany({
     where: { aiEnhanced: false, extractionSource: "rules" },
     include: {
-      rawArticles: { take: 1, select: { title: true, rawText: true } }
+      rawArticles: { take: 1, select: { title: true, rawText: true, source: { select: { type: true } } } }
     }
   });
 
@@ -103,13 +104,21 @@ export async function enrichEventsWithGroq(): Promise<EnrichResult> {
       ...locationUpdate
     };
 
-    // Re-evaluate auto-publish: if now high-confidence + location resolved, publish
-    const locationOk = !!(update.country ?? event.country);
-    const highConfidence = event.confidence >= 0.7;
+    // Re-evaluate auto-publish using the same criteria as the normal pipeline.
+    const effectiveLocationConfidence =
+      typeof locationUpdate.locationConfidence === "number"
+        ? locationUpdate.locationConfidence
+        : event.locationConfidence;
+    const isOfficialFeed = article.source?.type === SourceType.OFFICIAL_FEED;
     if (
-      highConfidence &&
-      locationOk &&
-      event.status === EventStatus.NEEDS_REVIEW
+      event.status === EventStatus.NEEDS_REVIEW &&
+      canAutoPublish({
+        confidence: event.confidence,
+        locationConfidence: effectiveLocationConfidence,
+        severity: aiResult.severity,
+        category: aiResult.category,
+        isOfficialFeed
+      })
     ) {
       update.status = EventStatus.PUBLISHED;
     }
