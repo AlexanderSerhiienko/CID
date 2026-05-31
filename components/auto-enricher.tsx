@@ -4,27 +4,45 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getAdminHeaders } from "@/lib/admin-client";
 
+type ProcessNextResult = {
+  done: boolean;
+  kind: "article" | "event" | "none";
+  remaining: number;
+};
+
 /**
- * Invisible component — auto-enriches unenriched events in the review queue
- * one by one (2.1s apart) so the reviewer just needs to approve or reject.
+ * Invisible background component — drives the enrichment queue automatically.
+ * Calls POST /api/admin/process-next in a loop (one item per 5s) until done.
+ * Handles both pending RawArticles (→ creates RiskEvents) and unenriched events.
+ * Refreshes the page after each item so stats and cards update in real time.
  */
-export function AutoEnricher({ eventIds }: { eventIds: string[] }) {
+export function AutoEnricher() {
   const router = useRouter();
   const started = useRef(false);
 
   useEffect(() => {
-    if (started.current || eventIds.length === 0) return;
+    if (started.current) return;
     started.current = true;
 
     async function run() {
-      for (const eventId of eventIds) {
-        await fetch("/api/admin/enrich", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-          body: JSON.stringify({ eventId })
-        }).catch(() => {}); // silent — network errors don't break the loop
+      while (true) {
+        let result: ProcessNextResult;
+        try {
+          const resp = await fetch("/api/admin/process-next", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...getAdminHeaders() }
+          });
+          if (!resp.ok) break;
+          result = await resp.json() as ProcessNextResult;
+        } catch {
+          break;
+        }
+
         router.refresh();
-        await new Promise((r) => setTimeout(r, 2_100));
+        if (result.done) break;
+
+        // 5s between calls keeps client-triggered enrichment comfortably below Groq rate limits.
+        await new Promise((r) => setTimeout(r, 5_000));
       }
     }
 

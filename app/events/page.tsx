@@ -85,14 +85,23 @@ export default async function EventsPage({
       : undefined
   };
 
-  const [events, total] = await Promise.all([
+  const aiWhere = { ...where, aiEnhanced: true };
+  const nonAiWhere = { ...where, aiEnhanced: false };
+
+  const [events, total, nonAiEvents, nonAiTotal] = await Promise.all([
     prisma.riskEvent.findMany({
-      where,
+      where: aiWhere,
       orderBy: { createdAt: "desc" },
       skip,
       take: PAGE_SIZE
     }),
-    prisma.riskEvent.count({ where })
+    prisma.riskEvent.count({ where: aiWhere }),
+    prisma.riskEvent.findMany({
+      where: nonAiWhere,
+      orderBy: { createdAt: "desc" },
+      take: PAGE_SIZE
+    }),
+    prisma.riskEvent.count({ where: nonAiWhere })
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -117,11 +126,9 @@ export default async function EventsPage({
           <h1 className="text-2xl font-semibold text-[#e1e2ec] tracking-tight">Events Registry</h1>
           <p className="mt-1 text-sm text-[#c2c6d6]">
             Manage and review global intelligence events.
-            {total > 0 && (
+            {(total + nonAiTotal) > 0 && (
               <span className="ml-2 text-[#8c909f]">
-                {total} event{total !== 1 ? "s" : ""}
-                {parsedCategory ? ` · ${CATEGORY_LABELS[parsedCategory]}` : ""}
-                {parsedSeverity ? ` · ${parsedSeverity}` : ""}
+                {total} AI enriched · {nonAiTotal} GeoRSS/rules
               </span>
             )}
           </p>
@@ -204,8 +211,12 @@ export default async function EventsPage({
         )}
       </form>
 
-      {/* Table */}
-      <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-lg overflow-hidden">
+      {/* AI Enriched Table */}
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-[#3b82f6]">✦ AI Enriched</span>
+        <span className="text-[10px] text-[#8c909f]">{total} events — category, severity and summary extracted by Groq</span>
+      </div>
+      <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-lg overflow-hidden mb-8">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[700px]">
             <thead>
@@ -304,6 +315,69 @@ export default async function EventsPage({
           </div>
         )}
       </div>
+      {/* GeoRSS / Rules Table */}
+      {nonAiTotal > 0 && (
+        <>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-[#4edea3]">◎ GeoRSS / Rules</span>
+            <span className="text-[10px] text-[#8c909f]">{nonAiTotal} events — extracted by deterministic rules or GeoRSS feed</span>
+          </div>
+          <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-[#2d2d2d] bg-[#191b23]">
+                    <th className="py-2.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] w-[14%]">Category</th>
+                    <th className="py-2.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] w-[30%]">Event Title</th>
+                    <th className="py-2.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] w-[16%]">Location</th>
+                    <th className="py-2.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] w-[10%]">Severity</th>
+                    <th className="py-2.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] w-[10%]">Conf.</th>
+                    <th className="py-2.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] w-[14%]">Source</th>
+                    <th className="py-2.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] w-[12%] text-right">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nonAiEvents.map((event) => (
+                    <tr
+                      key={event.id}
+                      className="border-b border-[#2d2d2d] last:border-0 hover:bg-[#252525] transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: severityColor(event.severity) }} />
+                          <span className="text-xs font-mono text-[#c2c6d6]">{CATEGORY_SHORT[event.category]}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <Link href={`/events/${event.id}`} className="text-sm font-medium text-[#e1e2ec] hover:text-[#3b82f6] transition-colors line-clamp-1">
+                          {event.title}
+                        </Link>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-[#c2c6d6]">
+                        {[event.city, event.country].filter(Boolean).join(", ") || "—"}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-xs font-semibold" style={{ color: severityColor(event.severity) }}>
+                          {event.severity}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-xs font-mono text-[#8c909f]">
+                        {Math.round(event.confidence * 100)}%
+                      </td>
+                      <td className="py-3 px-4 text-xs font-mono text-[#8c909f]">
+                        {event.extractionSource}
+                      </td>
+                      <td className="py-3 px-4 text-right text-xs font-mono text-[#8c909f] whitespace-nowrap">
+                        {formatDate(event.occurredAt ?? event.createdAt, now)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

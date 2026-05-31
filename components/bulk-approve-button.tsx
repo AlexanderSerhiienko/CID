@@ -55,7 +55,7 @@ export function BulkApproveButton({ pendingCount }: { pendingCount: number }) {
         ? "Approving..."
         : status === "error"
           ? "Error — retry"
-          : `Approve all trusted sources (${pendingCount})`}
+          : `Approve AI enriched in queue (${pendingCount})`}
     </button>
   );
 }

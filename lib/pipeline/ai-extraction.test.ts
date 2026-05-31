@@ -63,13 +63,13 @@ describe("extractWithAI", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when LLM response fails Zod validation (invalid category)", async () => {
+  it("returns false when LLM response fails Zod validation (invalid category)", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(validGroqResponse({ category: "VOLCANO_ERUPTION" }), { status: 200 })
     );
 
     const result = await extractWithAI("Volcano in Iceland", "...");
-    expect(result).toBeNull();
+    expect(result).toBe(false);
   });
 
   it("returns null when LLM returns non-JSON text", async () => {

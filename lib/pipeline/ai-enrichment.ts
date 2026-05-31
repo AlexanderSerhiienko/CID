@@ -8,7 +8,7 @@
  *   4. Creates a RiskEvent and links it to the RawArticle.
  *
  * Keeping this step separate from ingestion means RSS fetching is always fast
- * and Groq rate-limiting (2.1s/call) never blocks the ingest endpoint.
+ * and Groq rate-limiting never blocks the ingest endpoint.
  */
 
 import { EventCategory, EventStatus, Prisma } from "@prisma/client";
@@ -19,7 +19,7 @@ import { geocodeLocation } from "@/lib/pipeline/geocoder";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 
-const BATCH_SIZE = 20;       // ~42s at 2.1s/call — fits inside a 60s serverless window
+const BATCH_SIZE = 10;       // ~50s at 5s/call — fits inside a 60s serverless window
 const LOOKBACK_DAYS = 7;     // only enrich articles ingested in the last 7 days
 
 export type EnrichmentResult = {
@@ -66,15 +66,25 @@ export async function enrichPendingArticles(
     // Call Groq
     const aiResult = await extractWithAIThrottled(article.title, article.rawText);
 
-    if (!aiResult) {
-      // Groq unavailable — leave aiPending=true so next batch retries
+    if (aiResult === false) {
+      // Groq responded but output failed validation — permanent failure, don't retry
+      await prisma.rawArticle.update({ where: { id: article.id }, data: { aiPending: false, aiRejected: true } });
+      notRisk++;
+      continue;
+    }
+
+    if (aiResult === null) {
+      // Groq unavailable (network/429) — leave aiPending=true so next batch retries
       skipped++;
       continue;
     }
 
     if (!aiResult.isRiskEvent) {
-      // AI says this is not an active risk event — clear the pending flag, no RiskEvent
-      await prisma.rawArticle.update({ where: { id: article.id }, data: { aiPending: false } });
+      // AI says this is not an active risk event — flag it for human review instead of silently dropping
+      await prisma.rawArticle.update({
+        where: { id: article.id },
+        data: { aiPending: false, aiRejected: true }
+      });
       notRisk++;
       continue;
     }
@@ -219,7 +229,8 @@ export async function enrichEvent(eventId: string): Promise<EventEnrichmentResul
   const rawText = event.rawArticles[0]?.rawText ?? "";
 
   const aiResult = await extractWithAIThrottled(event.title, rawText);
-  if (!aiResult) return { ok: false, error: "AI unavailable or rate-limited" };
+  if (aiResult === null) return { ok: false, error: "AI unavailable or rate-limited" };
+  if (aiResult === false) return { ok: false, error: "AI output failed validation" };
   if (!aiResult.isRiskEvent) return { ok: true, notRisk: true };
 
   // Geocode if AI found a city that the event doesn't have yet

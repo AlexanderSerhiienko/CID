@@ -42,34 +42,7 @@ export function ReviewActions({
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
-  const [enrichState, setEnrichState] = useState<"idle" | "running" | "done" | "not-risk">("idle");
   const [error, setError] = useState<string | null>(null);
-
-  async function enrich() {
-    setIsLoading(true);
-    setEnrichState("running");
-    setError(null);
-    try {
-      const resp = await fetch("/api/admin/enrich", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-        body: JSON.stringify({ eventId: event.id })
-      });
-      const result = await resp.json() as { ok: boolean; notRisk?: boolean; error?: string };
-      if (!result.ok) {
-        setError(result.error ?? "Enrichment failed");
-        setEnrichState("idle");
-      } else {
-        setEnrichState(result.notRisk ? "not-risk" : "done");
-        router.refresh();
-      }
-    } catch {
-      setError("Network error");
-      setEnrichState("idle");
-    } finally {
-      setIsLoading(false);
-    }
-  }
   const eligibleMergeTargets = mergeTargets.filter((target) => target.id !== event.id);
 
   async function submit(action: "approve" | "reject", formData?: FormData) {
@@ -304,20 +277,6 @@ export function ReviewActions({
       <Button onClick={() => setIsMerging(true)} disabled={isLoading} variant="secondary">
         Merge
       </Button>
-      {enrichState === "idle" && !event.aiEnhanced && (
-        <Button onClick={enrich} disabled={isLoading} variant="secondary">
-          ✨ Enrich
-        </Button>
-      )}
-      {enrichState === "running" && (
-        <span className="text-[11px] animate-pulse text-[#a78bfa]">⚡ Enriching…</span>
-      )}
-      {enrichState === "done" && (
-        <span className="text-[11px] text-[#4edea3]">✓ AI enriched</span>
-      )}
-      {enrichState === "not-risk" && (
-        <span className="text-[11px] text-[#8c909f]">AI: not a risk event</span>
-      )}
       {error ? <p className="basis-full text-sm text-destructive">{error}</p> : null}
     </div>
   );

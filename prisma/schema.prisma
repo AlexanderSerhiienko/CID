@@ -67,11 +67,13 @@ model RawArticle {
   riskEventId String?
   riskEvent   RiskEvent?      @relation(fields: [riskEventId], references: [id], onDelete: SetNull)
   aiPending   Boolean         @default(false) // true = ingested, awaiting AI enrichment step
+  aiRejected  Boolean         @default(false) // true = AI said isRiskEvent:false; shown for human review
   createdAt   DateTime        @default(now())
 
   @@index([sourceId])
   @@index([publishedAt])
   @@index([aiPending])
+  @@index([aiRejected])
 }
 
 model RiskEvent {
