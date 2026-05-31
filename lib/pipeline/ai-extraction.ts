@@ -56,7 +56,7 @@ function stripBoilerplate(text: string): string {
 
 // Shared rate limiter — all callers (ingestion + enrichment) use the same state
 // so Groq's 30 RPM free-tier limit is respected regardless of which path fires.
-const GROQ_MIN_INTERVAL_MS = 2_100;
+export const GROQ_MIN_INTERVAL_MS = 2_100;
 let groqLastCallAt = 0;
 
 export async function extractWithAIThrottled(
