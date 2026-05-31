@@ -137,7 +137,10 @@ export function normalizeCountryName(country: string) {
     "syrian arab republic": "syria",
     "united states": "united states of america",
     "usa": "united states of america",
-    "u.s.": "united states of america"
+    "u.s.": "united states of america",
+    "united kingdom": "united kingdom",
+    "uk": "united kingdom",
+    "great britain": "united kingdom"
   };
 
   return aliases[normalized] ?? normalized;

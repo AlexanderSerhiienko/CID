@@ -2,24 +2,15 @@ import Parser from "rss-parser";
 import { EventCategory, EventStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { contentHash } from "@/lib/pipeline/hash";
-import { extractEventFromArticle, type PipelineSignal } from "@/lib/pipeline/extraction";
+import { extractEventFromArticle, CONFIDENCE_CATEGORY_BONUS, type PipelineSignal } from "@/lib/pipeline/extraction";
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { geocodeLocation } from "@/lib/pipeline/geocoder";
-import { enrichLocation, shouldEnrichLocation } from "@/lib/pipeline/location-enrichment";
-import { extractWithAI, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
+import { extractWithAIThrottled, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { normalizeUrl, stripHtml } from "@/lib/utils";
 
 const DUPLICATE_CONFIDENCE_INCREMENT = 0.1;
 const GEORSS_LOCATION_CONFIDENCE = 0.9;
-
-// Groq circuit breaker: open after N consecutive null returns, reset after 5 minutes.
-// Module-level so a Groq outage trips the circuit globally — if Groq is down
-// for one source it's down for all of them, and stalling per-article is wasteful.
-const GROQ_CIRCUIT_THRESHOLD = 3;
-const GROQ_CIRCUIT_RESET_MS = 5 * 60 * 1_000;
-let groqConsecutiveNulls = 0;
-let groqCircuitOpenUntil = 0;
 
 // Custom fields for GeoRSS (used by USGS Atom feed and others)
 type GeoRssItem = {
@@ -83,38 +74,6 @@ function parseDate(value: string | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/**
- * Wraps extractWithAI with a simple circuit breaker.
- * After GROQ_CIRCUIT_THRESHOLD consecutive null returns, skips Groq for
- * GROQ_CIRCUIT_RESET_MS to avoid stalling the pipeline on every article
- * during an outage or rate-limit period.
- */
-async function extractWithAIGuarded(
-  title: string,
-  rawText: string
-): Promise<Awaited<ReturnType<typeof extractWithAI>>> {
-  if (!process.env.GROQ_API_KEY) return null; // not configured — skip tracking
-  if (Date.now() < groqCircuitOpenUntil) return null; // circuit open
-
-  const result = await extractWithAI(title, rawText);
-
-  if (result === null) {
-    groqConsecutiveNulls += 1;
-    if (groqConsecutiveNulls >= GROQ_CIRCUIT_THRESHOLD) {
-      groqCircuitOpenUntil = Date.now() + GROQ_CIRCUIT_RESET_MS;
-      console.warn(
-        `[groq] Circuit opened after ${GROQ_CIRCUIT_THRESHOLD} consecutive failures. ` +
-          `Skipping AI extraction for ${GROQ_CIRCUIT_RESET_MS / 60_000} minutes.`
-      );
-      // Do NOT reset groqConsecutiveNulls here — groqCircuitOpenUntil already gates
-      // all subsequent calls, and the next successful Groq response resets it to 0.
-    }
-  } else {
-    groqConsecutiveNulls = 0;
-  }
-
-  return result;
-}
 
 export async function ingestRssSource(sourceId: string) {
   const source = await prisma.source.findUniqueOrThrow({
@@ -276,40 +235,6 @@ export async function ingestRssSource(sourceId: string) {
       }
     }
 
-    // AI location enrichment — runs after Nominatim, only for quality events
-    // without precise coordinates. Uses Groq to extract a sub-national place name,
-    // then Nominatim to geocode it.
-    if (
-      !geoCoords &&
-      !geocoderUsed &&
-      shouldEnrichLocation({
-        isLikelyRiskEvent: extracted.isLikelyRiskEvent,
-        riskSignals: extracted.riskSignals,
-        category: extracted.category,
-        locationConfidence: extracted.locationConfidence,
-        country: extracted.country,
-      })
-    ) {
-      const enriched = await enrichLocation({
-        title,
-        rawText,
-        country: extracted.country!,
-      });
-      if (enriched) {
-        geocoderUsed = true;
-        extracted.city = enriched.placeName;
-        extracted.latitude = enriched.lat;
-        extracted.longitude = enriched.lon;
-        extracted.locationConfidence = 0.75;
-        extracted.signals.push({
-          kind: "location",
-          label: "location:ai-enriched",
-          detail: `Place extracted by AI: "${enriched.placeName}" → geocoded to (${enriched.lat.toFixed(4)}, ${enriched.lon.toFixed(4)})`,
-          weight: 0.75,
-        });
-      }
-    }
-
     if (!extracted.isLikelyRiskEvent) {
       // Non-risk article: create the raw record only (no transaction needed — single write)
       await prisma.rawArticle.create({
@@ -373,20 +298,18 @@ export async function ingestRssSource(sourceId: string) {
       continue;
     }
 
-    // AI enhancement: guarded by circuit breaker to avoid stalling on Groq outages.
-    // Only runs for new risk events — duplicates are handled above without AI.
-    // Skipped for GeoRSS feeds — coordinates are already precise.
+    // AI extraction: guarded by circuit breaker. Runs after dedup to avoid wasting
+    // Groq calls on duplicate articles. Skipped for GeoRSS feeds (coordinates already precise).
+    // AI is now the primary source for category, severity, summary, and location.
+    // Rules are the fallback when AI is unavailable.
     let aiEnhanced = false;
-    const extractionSource = geoCoords ? "georss" : "rules";
+    let extractionSource = geoCoords ? "georss" : "rules";
     if (!geoCoords) {
-      const aiResult = await extractWithAIGuarded(title, rawText);
+      const aiResult = await extractWithAIThrottled(title, rawText);
       if (aiResult) {
         if (!aiResult.isRiskEvent) {
-          // AI overrides rules-based detection. The article is not a risk event —
-          // store the raw record only and skip event creation.
-          // NOTE: we cannot use the isLikelyRiskEvent flag here because the flag check
-          // at line 274 already ran (and passed). Setting it to false has no effect —
-          // execution continues past line 274 regardless. We must continue explicitly.
+          // AI determined this is not an active risk event (policy report, stats, etc.) —
+          // store raw record only and skip event creation.
           await prisma.rawArticle.create({
             data: {
               sourceId: source.id,
@@ -401,23 +324,55 @@ export async function ingestRssSource(sourceId: string) {
           continue;
         }
 
-        // AI confirmed it is a risk event — apply category, severity, and summary.
-        // If AI upgrades from UNKNOWN to a concrete category, apply the category
-        // confidence bonus that was missed when extraction ran with UNKNOWN.
-        // CONFIDENCE_CATEGORY_BONUS = 0.25 (matches lib/pipeline/extraction.ts)
+        // Apply AI category/severity/summary as primary source.
+        // If AI upgrades from UNKNOWN to a concrete category, apply the missed confidence bonus.
         if (extracted.category === EventCategory.UNKNOWN && aiResult.category !== EventCategory.UNKNOWN) {
-          extracted.confidence = Math.min(1, Number((extracted.confidence + 0.25).toFixed(2)));
+          extracted.confidence = Math.min(1, Number((extracted.confidence + CONFIDENCE_CATEGORY_BONUS).toFixed(2)));
         }
         extracted.category = aiResult.category;
         extracted.severity = aiResult.severity;
         extracted.summary = aiResult.summary;
+
+        // Apply AI-extracted location when rules didn't find a city-level match.
+        // AI city+country feeds Nominatim for precise coordinates.
+        if (aiResult.city && extracted.city === null && !geocoderUsed) {
+          const aiCountry = aiResult.country ?? extracted.country;
+          const query = aiCountry ? `${aiResult.city}, ${aiCountry}` : aiResult.city;
+          const geocoded = await geocodeLocation(query);
+          if (geocoded) {
+            geocoderUsed = true;
+            extracted.city = aiResult.city;
+            if (!extracted.country) extracted.country = geocoded.country;
+            extracted.latitude = geocoded.lat;
+            extracted.longitude = geocoded.lon;
+            extracted.locationConfidence = Math.max(extracted.locationConfidence, geocoded.confidence);
+            extracted.signals.push({
+              kind: "location",
+              label: "location:ai-city",
+              detail: `City extracted by AI: "${aiResult.city}" → geocoded (${geocoded.lat.toFixed(4)}, ${geocoded.lon.toFixed(4)})`,
+              weight: geocoded.confidence
+            });
+          }
+        } else if (aiResult.country && extracted.country === null) {
+          // AI found country but no city — use as country-level fallback
+          extracted.country = aiResult.country;
+          extracted.signals.push({
+            kind: "location",
+            label: "location:ai-country",
+            detail: `Country extracted by AI: "${aiResult.country}"`,
+            weight: 0.6
+          });
+          if (extracted.locationConfidence === 0) extracted.locationConfidence = 0.6;
+        }
+
         extracted.signals.push({
           kind: "category",
           label: "ai:groq_extraction",
-          detail: `Category and severity refined by Groq (${GROQ_MODEL}).`,
+          detail: `Category, severity, and location extracted by Groq (${GROQ_MODEL}).`,
           weight: 0.1
         });
         aiEnhanced = true;
+        extractionSource = "ai";
       }
     }
 

@@ -8,7 +8,7 @@ const TEXT_LOCATION_CONFIDENCE_PENALTY = 0.15;
 const MIN_LOCATION_CONFIDENCE = 0.4;
 const CATEGORY_SIGNAL_WEIGHT = 0.25;
 const CONFIDENCE_BASE = 0.25;
-const CONFIDENCE_CATEGORY_BONUS = 0.25;
+export const CONFIDENCE_CATEGORY_BONUS = 0.25;
 const CONFIDENCE_LOCATION_WEIGHT = 0.25;
 const CONFIDENCE_SEVERITY_LOW_BONUS = 0.05;
 const CONFIDENCE_SEVERITY_MEDIUM_BONUS = 0.10;
@@ -51,7 +51,12 @@ export type PipelineSignal = {
 const categoryRules: Array<{ category: EventCategory; keywords: string[] }> = [
   {
     category: EventCategory.DISEASE_OUTBREAK,
-    keywords: ["outbreak", "hantavirus", "cholera", "ebola", "influenza", "measles", "cases", "infection", "malaria", "health crisis"]
+    keywords: [
+      "outbreak", "hantavirus", "cholera", "ebola", "influenza", "measles", "cases", "infection",
+      "malaria", "health crisis", "poliovirus", "polio", "dengue", "mpox", "monkeypox", "rabies",
+      "chikungunya", "cereulide", "foodborne", "salmonella newport", "multidrug-resistant",
+      "antimicrobial resistance", "wastewater surveillance", "risk assessment", "epidemiological"
+    ]
   },
   {
     category: EventCategory.NATURAL_DISASTER,
@@ -59,7 +64,11 @@ const categoryRules: Array<{ category: EventCategory; keywords: string[] }> = [
   },
   {
     category: EventCategory.CYBER_ATTACK,
-    keywords: ["ransomware", "cyberattack", "data breach", "malware", "phishing", "ddos"]
+    keywords: [
+      "ransomware", "cyberattack", "data breach", "malware", "phishing", "ddos",
+      "vulnerability", "exploit", "supply chain compromise", "compromise", "unauthorized access",
+      "ics advisory", "scada", "remote code execution", "patch", "cve-"
+    ]
   },
   {
     category: EventCategory.TRANSPORT_DISRUPTION,
@@ -71,7 +80,11 @@ const categoryRules: Array<{ category: EventCategory; keywords: string[] }> = [
   },
   {
     category: EventCategory.FOOD_SAFETY_ALERT,
-    keywords: ["recall", "contamination", "salmonella", "listeria", "food safety", "e. coli"]
+    keywords: [
+      "recall", "contamination", "salmonella", "listeria", "food safety", "e. coli",
+      "foodborne", "cereulide", "infant formula", "medical device correction", "voluntary correction",
+      "class i", "class ii", "fda recall", "undeclared"
+    ]
   }
 ];
 
@@ -88,20 +101,28 @@ const riskSignalKeywords = [
   "attack",
   "breach",
   "cases",
+  "cereulide",
+  "chikungunya",
   "clashes",
+  "compromise",
   "confirmed",
   "conflict",
   "contamination",
   "critical",
   "curfew",
+  "cve-",
   "cyclone",
   "death",
   "deaths",
+  "dengue",
   "drought",
   "earthquake",
   "emergency",
+  "epidemiological",
   "evacuation",
+  "exploit",
   "flood",
+  "foodborne",
   "forest fire",
   "hantavirus",
   "hospitalized",
@@ -111,15 +132,25 @@ const riskSignalKeywords = [
   "landslide",
   "malaria",
   "magnitude",
+  "malware",
+  "mpox",
+  "multidrug-resistant",
   "outage",
   "outbreak",
+  "patch",
+  "polio",
+  "poliovirus",
   "protest",
+  "rabies",
   "ransomware",
   "recall",
   "riot",
+  "supply chain compromise",
   "transport disruption",
   "tsunami",
+  "unauthorized access",
   "unrest",
+  "vulnerability",
   "wildfire"
 ];
 
@@ -127,7 +158,9 @@ const nonIncidentKeywords = [
   "collaborating centres",
   "eliminated trachoma",
   "forum",
+  "health assembly opens",
   "health statistics",
+  "honours global champions",
   "member states agree",
   "negotiations",
   "one health",
@@ -135,7 +168,9 @@ const nonIncidentKeywords = [
   "prequalifies",
   "results report",
   "summit",
-  "world health day"
+  "world health day",
+  "vaccine effectiveness",
+  "worldwide overview"
 ];
 
 function detectCategory(text: string): EventCategory {

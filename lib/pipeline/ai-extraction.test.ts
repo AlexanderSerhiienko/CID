@@ -11,6 +11,8 @@ const validGroqResponse = (overrides: Record<string, unknown> = {}) =>
             severity: "HIGH",
             summary: "Ebola outbreak confirmed in the Democratic Republic of Congo.",
             isRiskEvent: true,
+            city: "Kinshasa",
+            country: "Democratic Republic of Congo",
             ...overrides
           })
         }
@@ -46,7 +48,9 @@ describe("extractWithAI", () => {
       category: "DISEASE_OUTBREAK",
       severity: "HIGH",
       isRiskEvent: true,
-      summary: expect.any(String)
+      summary: expect.any(String),
+      city: "Kinshasa",
+      country: "Democratic Republic of Congo"
     });
   });
 
@@ -96,7 +100,9 @@ describe("extractWithAI", () => {
         category: "NATURAL_DISASTER",
         severity: "CRITICAL",
         summary: "Major earthquake struck southern Turkey.",
-        isRiskEvent: true
+        isRiskEvent: true,
+        city: "Gaziantep",
+        country: "Turkey"
       }) +
       "\n```";
 

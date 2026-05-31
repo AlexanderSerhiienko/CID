@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // pooler (port 6543) — used for queries at runtime
+  directUrl = env("DIRECT_URL")     // direct (port 5432) — used by prisma migrate
 }
 
 enum SourceType {
@@ -32,11 +33,11 @@ enum Severity {
 }
 
 enum EventStatus {
-  DRAFT
   NEEDS_REVIEW
   PUBLISHED
   REJECTED
 }
+
 
 model Source {
   id             String       @id @default(cuid())
@@ -61,14 +62,13 @@ model RawArticle {
   title       String
   url         String          @unique
   publishedAt DateTime?
-  contentHash String
+  contentHash String          @unique
   rawText     String
   riskEventId String?
   riskEvent   RiskEvent?      @relation(fields: [riskEventId], references: [id], onDelete: SetNull)
   createdAt   DateTime        @default(now())
 
   @@index([sourceId])
-  @@index([contentHash])
   @@index([publishedAt])
 }
 

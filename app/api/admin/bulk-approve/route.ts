@@ -13,30 +13,14 @@ export async function POST(request: NextRequest) {
   const unauthorized = requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  // Find all NEEDS_REVIEW events from OFFICIAL_FEED sources
-  const events = await prisma.riskEvent.findMany({
-    where: { status: EventStatus.NEEDS_REVIEW },
-    select: {
-      id: true,
-      rawArticles: {
-        select: {
-          source: { select: { type: true } }
-        },
-        take: 1
-      }
-    }
-  });
-
-  const officialIds = events
-    .filter((e) => e.rawArticles.some((a) => a.source.type === SourceType.OFFICIAL_FEED))
-    .map((e) => e.id);
-
-  if (officialIds.length === 0) {
-    return NextResponse.json({ approved: 0 });
-  }
-
+  // Publish all NEEDS_REVIEW events that have at least one article from an OFFICIAL_FEED source
   const result = await prisma.riskEvent.updateMany({
-    where: { id: { in: officialIds }, status: EventStatus.NEEDS_REVIEW },
+    where: {
+      status: EventStatus.NEEDS_REVIEW,
+      rawArticles: {
+        some: { source: { type: SourceType.OFFICIAL_FEED } }
+      }
+    },
     data: { status: EventStatus.PUBLISHED }
   });
 

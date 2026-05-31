@@ -35,6 +35,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://cid:cid@localhost:5432/cid?schema=public
+      DIRECT_URL: postgresql://cid:cid@localhost:5432/cid?schema=public
       REDIS_URL: redis://localhost:6379
       OLLAMA_ENABLED: "false"
 

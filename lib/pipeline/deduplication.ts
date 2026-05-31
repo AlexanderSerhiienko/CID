@@ -31,7 +31,7 @@ export function isDuplicateCandidate(
     return false;
   }
 
-  if (candidate.country && existing.country && candidate.country !== existing.country) {
+  if (candidate.country !== existing.country) {
     return false;
   }
 

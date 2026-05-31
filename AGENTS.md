@@ -83,7 +83,7 @@ This is a portfolio project demonstrating fullstack engineering + AI-native deve
 - **UI:** Tailwind CSS + shadcn/ui + Leaflet (choropleth risk map)
 - **Validation:** Zod
 - **Tests:** Vitest
-- **Infrastructure:** Docker Compose (PostgreSQL only), GitHub Actions CI
+- **Infrastructure:** Docker Compose, GitHub Actions CI
 - **Optional AI extraction:** Groq (gated with timeout and fallback)
 
 ---
@@ -268,7 +268,7 @@ rawText → deterministic rules → [optional Groq] → Zod validation → fallb
 
 ## AI Workflow Automation
 
-### Slash Commands (`.claude/commands/`)
+### Slash Commands (`.Codex/commands/`)
 
 | Command | When to use |
 |---------|-------------|
@@ -280,7 +280,7 @@ rawText → deterministic rules → [optional Groq] → Zod validation → fallb
 | `/code-review` | Reviews current diff before opening a PR |
 | `/simplify` | Cleans up changed code after a feature lands |
 
-### Automated Hooks (`.claude/settings.json`)
+### Automated Hooks (`.Codex/settings.json`)
 
 | Trigger | What happens |
 |---------|-------------|

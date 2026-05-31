@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
       create: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
       updateMany: vi.fn()
     },
     riskEvent: {
@@ -73,8 +74,7 @@ describe("protected API route contracts", () => {
 
   it("updates a source with validated payload", async () => {
     const source = { id: "source-1", enabled: false, trustScore: 0.7 };
-    mocks.prisma.source.updateMany.mockResolvedValue({ count: 1 });
-    mocks.prisma.source.findUnique.mockResolvedValue(source);
+    mocks.prisma.source.update.mockResolvedValue(source);
 
     const response = await sourcePatch(
       jsonRequest("/api/sources/source-1", { enabled: false, trustScore: 0.7 }, { token: "dev-admin-token" }),
@@ -83,14 +83,14 @@ describe("protected API route contracts", () => {
 
     await expect(response.json()).resolves.toEqual({ source });
     expect(response.status).toBe(200);
-    expect(mocks.prisma.source.updateMany).toHaveBeenCalledWith({
+    expect(mocks.prisma.source.update).toHaveBeenCalledWith({
       where: { id: "source-1" },
       data: { enabled: false, trustScore: 0.7 }
     });
   });
 
   it("returns 404 when updating a source that does not exist", async () => {
-    mocks.prisma.source.updateMany.mockResolvedValue({ count: 0 });
+    mocks.prisma.source.update.mockRejectedValue(new Error("Not found"));
 
     const response = await sourcePatch(
       jsonRequest("/api/sources/unknown", { enabled: false }, { token: "dev-admin-token" }),
@@ -111,7 +111,12 @@ describe("protected API route contracts", () => {
 
   it("runs RSS ingestion for enabled sources with a valid admin token", async () => {
     mocks.prisma.source.findMany.mockResolvedValue([{ id: "source-1", name: "WHO", enabled: true }]);
-    mocks.ingestRssSource.mockResolvedValue({ rawArticles: 2, candidateEvents: 1 });
+    mocks.ingestRssSource.mockResolvedValue({
+      sourceId: "source-1",
+      createdArticles: 2,
+      duplicateArticles: 0,
+      candidateEvents: 1
+    });
 
     const response = await ingestPost(
       jsonRequest("/api/ingest/rss", {}, { token: "dev-admin-token" })
@@ -123,7 +128,7 @@ describe("protected API route contracts", () => {
           sourceId: "source-1",
           sourceName: "WHO",
           ok: true,
-          result: { rawArticles: 2, candidateEvents: 1 }
+          result: { sourceId: "source-1", createdArticles: 2, duplicateArticles: 0, candidateEvents: 1 }
         }
       ]
     });
@@ -273,7 +278,7 @@ describe("POST /api/admin/bulk-approve", () => {
   });
 
   it("returns approved: 0 when no official-feed events in review queue", async () => {
-    mocks.prisma.riskEvent.findMany.mockResolvedValue([]);
+    mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 0 });
 
     const response = await bulkApprovePost(
       jsonRequest("/api/admin/bulk-approve", {}, { token: "dev-admin-token" })
@@ -281,14 +286,9 @@ describe("POST /api/admin/bulk-approve", () => {
 
     await expect(response.json()).resolves.toEqual({ approved: 0 });
     expect(response.status).toBe(200);
-    expect(mocks.prisma.riskEvent.updateMany).not.toHaveBeenCalled();
   });
 
   it("publishes only official-feed events and returns count", async () => {
-    mocks.prisma.riskEvent.findMany.mockResolvedValue([
-      { id: "e1", rawArticles: [{ source: { type: SourceType.OFFICIAL_FEED } }] },
-      { id: "e2", rawArticles: [{ source: { type: SourceType.RSS } }] }
-    ]);
     mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 1 });
 
     const response = await bulkApprovePost(
@@ -297,7 +297,10 @@ describe("POST /api/admin/bulk-approve", () => {
 
     await expect(response.json()).resolves.toEqual({ approved: 1 });
     expect(mocks.prisma.riskEvent.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["e1"] }, status: EventStatus.NEEDS_REVIEW },
+      where: {
+        status: EventStatus.NEEDS_REVIEW,
+        rawArticles: { some: { source: { type: SourceType.OFFICIAL_FEED } } }
+      },
       data: { status: EventStatus.PUBLISHED }
     });
   });

@@ -76,7 +76,7 @@ export function rankMergeSuggestions(
 ) {
   return targets
     .map((target) => scoreMergeTarget(source, target))
-    .filter((target): target is MergeSuggestion => Boolean(target))
+    .filter((target): target is MergeSuggestion => target !== null && target.score > 0)
     .sort((a, b) => b.score - a.score || b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
