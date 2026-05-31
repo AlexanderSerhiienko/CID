@@ -18,6 +18,7 @@ type ReviewEvent = {
   latitude: number | null;
   longitude: number | null;
   locationConfidence: number;
+  aiEnhanced: boolean;
 };
 
 type MergeTarget = {

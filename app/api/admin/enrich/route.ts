@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
-import { enrichEventsWithGroq } from "@/lib/pipeline/enrich";
+import { enrichPendingArticles, enrichEvent } from "@/lib/pipeline/ai-enrichment";
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
-  const authError = requireAdmin(req);
-  if (authError) return authError;
+const schema = z.object({
+  articleId: z.string().optional(),
+  eventId: z.string().optional()
+});
 
-  const result = await enrichEventsWithGroq();
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
+  const body = schema.safeParse(await request.json().catch(() => ({})));
+  const { articleId, eventId } = body.success ? body.data : {};
+
+  if (eventId) {
+    const result = await enrichEvent(eventId);
+    return NextResponse.json(result);
+  }
+
+  const result = await enrichPendingArticles(20, articleId);
   return NextResponse.json(result);
 }

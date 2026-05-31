@@ -286,7 +286,7 @@ describe("POST /api/admin/bulk-approve", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns approved: 0 when no official-feed events in review queue", async () => {
+  it("returns approved: 0 when no AI-enriched events are in review queue", async () => {
     mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 0 });
 
     const response = await bulkApprovePost(
@@ -297,7 +297,7 @@ describe("POST /api/admin/bulk-approve", () => {
     expect(response.status).toBe(200);
   });
 
-  it("publishes only official-feed events and returns count", async () => {
+  it("publishes only AI-enriched review events and returns count", async () => {
     mocks.prisma.riskEvent.updateMany.mockResolvedValue({ count: 1 });
 
     const response = await bulkApprovePost(
@@ -308,7 +308,7 @@ describe("POST /api/admin/bulk-approve", () => {
     expect(mocks.prisma.riskEvent.updateMany).toHaveBeenCalledWith({
       where: {
         status: EventStatus.NEEDS_REVIEW,
-        rawArticles: { some: { source: { type: SourceType.OFFICIAL_FEED } } }
+        aiEnhanced: true
       },
       data: { status: EventStatus.PUBLISHED }
     });
