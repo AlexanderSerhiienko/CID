@@ -165,29 +165,7 @@ export default async function ReviewPage({
         </div>
       )}
 
-      {/* Pending AI enrichment */}
-      {pendingArticles.length > 0 && (
-        <div className="mb-6">
-          <div className="text-[11px] font-semibold uppercase tracking-widest text-[#f59e0b] mb-3">
-            ⏳ Pending AI enrichment ({statAiPending})
-          </div>
-          <div className="space-y-2">
-            {pendingArticles.map((article) => (
-              <div key={article.id} className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-[#e1e2ec] truncate">{article.title}</div>
-                  <div className="text-[10px] text-[#8c909f] mt-0.5">
-                    {article.source.name} · {article.createdAt.toISOString().slice(0, 16).replace("T", " ")}
-                  </div>
-                </div>
-                <EnrichButton pendingCount={1} articleId={article.id} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {events.length === 0 && page === 1 ? (
+      {events.length === 0 && pendingArticles.length === 0 && page === 1 ? (
         <EmptyState
           title="Review queue is empty"
           detail="Run ingestion or lower confidence thresholds to generate review candidates."
@@ -300,6 +278,35 @@ export default async function ReviewPage({
                 </article>
               );
             })}
+
+            {/* Pending AI enrichment cards — same queue, different action */}
+            {pendingArticles.map((article) => (
+              <article
+                key={article.id}
+                className="rounded-lg border border-[#f59e0b]/30 bg-[#1a1a1a] hover:border-[#f59e0b]/50 transition-colors"
+              >
+                <div className="p-4 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <span className="text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded border border-[#f59e0b]/40 text-[#f59e0b] bg-[#f59e0b]/10">
+                        ⏳ Pending AI
+                      </span>
+                      <span className="text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded border border-[#424754] text-[#8c909f]">
+                        {article.source.name}
+                      </span>
+                      <span className="text-[10px] font-mono text-[#8c909f]">
+                        {article.createdAt.toISOString().slice(0, 16).replace("T", " ")}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-semibold text-[#e1e2ec] mb-1">{article.title}</h3>
+                    <p className="text-xs text-[#8c909f]">Ingested but not yet AI-enriched. Click Enrich to classify with Groq.</p>
+                  </div>
+                  <div className="shrink-0">
+                    <EnrichButton articleId={article.id} pendingCount={1} />
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
 
           {totalPages > 1 && (
