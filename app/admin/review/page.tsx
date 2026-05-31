@@ -35,7 +35,7 @@ export default async function ReviewPage({
   const page = Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage);
   const skip = (page - 1) * PAGE_SIZE;
 
-  const [events, total, officialCount, mergeTargets] = await Promise.all([
+  const [events, total, officialCount, mergeTargets, pipelineStats] = await Promise.all([
     prisma.riskEvent.findMany({
       where: { status: EventStatus.NEEDS_REVIEW },
       orderBy: { createdAt: "asc" },
@@ -72,8 +72,30 @@ export default async function ReviewPage({
         city: true,
         updatedAt: true
       }
-    })
+    }),
+    prisma.$queryRaw<[{
+      total: bigint;
+      ai_extraction: bigint;
+      ai_location: bigint;
+      geocoder_used: bigint;
+      auto_published: bigint;
+    }]>`
+      SELECT
+        count(*)::int                                                             AS total,
+        count(*) FILTER (WHERE "aiEnhanced" = true)::int                         AS ai_extraction,
+        count(*) FILTER (WHERE signals::text LIKE '%location:ai-enriched%')::int AS ai_location,
+        count(*) FILTER (WHERE "geocoderUsed" = true)::int                       AS geocoder_used,
+        count(*) FILTER (WHERE status = 'PUBLISHED')::int                        AS auto_published
+      FROM "RiskEvent"
+    `
   ]);
+
+  const stats = pipelineStats[0];
+  const statTotal = Number(stats.total);
+  const statAiExtraction = Number(stats.ai_extraction);
+  const statAiLocation = Number(stats.ai_location);
+  const statGeocoderUsed = Number(stats.geocoder_used);
+  const statAutoPublished = Number(stats.auto_published);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -93,6 +115,40 @@ export default async function ReviewPage({
         </div>
         {officialCount > 0 && <BulkApproveButton pendingCount={officialCount} />}
       </div>
+
+      {/* Pipeline AI stats */}
+      {statTotal > 0 && (
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Total events</div>
+            <div className="text-2xl font-bold text-[#e1e2ec]">{statTotal}</div>
+          </div>
+          <div className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Auto-published</div>
+            <div className="text-2xl font-bold text-[#4edea3]">{statAutoPublished}</div>
+            <div className="text-[10px] text-[#8c909f] mt-0.5">{statTotal > 0 ? Math.round(statAutoPublished / statTotal * 100) : 0}% of total</div>
+          </div>
+          <div className="rounded-lg border border-[#3b82f6]/30 bg-[#3b82f6]/5 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#3b82f6]/70 mb-1">AI extraction</div>
+            <div className="text-2xl font-bold text-[#3b82f6]">{statAiExtraction}</div>
+            <div className="text-[10px] text-[#8c909f] mt-0.5">{statTotal > 0 ? Math.round(statAiExtraction / statTotal * 100) : 0}% of total</div>
+          </div>
+          <div className="rounded-lg border border-[#a78bfa]/30 bg-[#a78bfa]/5 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#a78bfa]/70 mb-1">AI location</div>
+            <div className="text-2xl font-bold text-[#a78bfa]">{statAiLocation}</div>
+            <div className="text-[10px] text-[#8c909f] mt-0.5">
+              {statAiLocation === 0
+                ? "none yet"
+                : `${Math.round(statAiLocation / statTotal * 100)}% of total`}
+            </div>
+          </div>
+          <div className="rounded-lg border border-[#4edea3]/30 bg-[#4edea3]/5 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#4edea3]/70 mb-1">Geocoded</div>
+            <div className="text-2xl font-bold text-[#4edea3]">{statGeocoderUsed}</div>
+            <div className="text-[10px] text-[#8c909f] mt-0.5">{statTotal > 0 ? Math.round(statGeocoderUsed / statTotal * 100) : 0}% of total</div>
+          </div>
+        </div>
+      )}
 
       {events.length === 0 && page === 1 ? (
         <EmptyState
