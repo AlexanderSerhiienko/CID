@@ -18,7 +18,7 @@ For anything larger than a one-line fix, produce a plan before writing code:
 - [ ] lib/pipeline/
 - [ ] app/api/
 - [ ] app/ (UI)
-- [ ] workers/
+- [ ] scheduled ingestion
 - [ ] tests
 
 ### Implementation steps
@@ -79,7 +79,7 @@ This is a portfolio project demonstrating fullstack engineering + AI-native deve
 
 - **Framework:** Next.js 15 App Router, React 19, TypeScript
 - **Database:** PostgreSQL + Prisma ORM
-- **Queue:** BullMQ + Redis (ioredis)
+- **Scheduled ingestion:** Vercel Cron + admin-triggered RSS ingestion
 - **UI:** Tailwind CSS + shadcn/ui + Leaflet (choropleth risk map)
 - **Validation:** Zod
 - **Tests:** Vitest
@@ -201,7 +201,7 @@ docs/adr/               # Architecture Decision Records
 - **Server components by default** — only add `'use client'` when actually needed
 - **Business logic in `lib/`** — never put logic inside API route handlers
 - **No N+1 queries** — use Prisma `include` or batch with `findMany({ where: { id: { in: [...] } } })`
-- **BullMQ jobs** must have retry logic; external RSS fetches must have a timeout
+- **Scheduled ingestion** must remain idempotent; external RSS fetches must have a timeout
 
 ### Test priorities
 1. Pipeline logic — extraction, scoring, deduplication (pure functions, easy to test)
@@ -224,8 +224,8 @@ docs/adr/               # Architecture Decision Records
 - Ranked merge suggestions with reason text
 - Dashboard with Leaflet choropleth risk map (green/yellow/red by country)
 - Events table with filtering and detail pages
-- BullMQ queue + worker for async ingestion
-- Docker Compose (PostgreSQL on port 5433, Redis)
+- Vercel Cron + admin endpoint for scheduled/manual ingestion
+- Docker Compose (PostgreSQL on port 5433)
 - GitHub Actions CI (typecheck + test + lint + build)
 - Vitest unit tests for extraction, scoring, deduplication, merge, validation, admin auth
 
@@ -260,7 +260,7 @@ rawText → deterministic rules → [optional Groq] → Zod validation → fallb
 
 - `docs/adr/001` — AI-Assisted Engineering Workflow
 - `docs/adr/002` — Hybrid Extraction: Rules Before Groq
-- `docs/adr/003` — BullMQ For Ingestion Jobs
+- `docs/adr/003` — Vercel Cron Inline Ingestion
 - `docs/adr/004` — First Vertical Slice Before Feature Expansion
 
 ---

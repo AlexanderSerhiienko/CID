@@ -10,3 +10,5 @@ tsconfig.tsbuildinfo
 prisma/dev.db
 .vercel
 .claude/settings.local.json
+.codex/
+BACKEND_AUDIT.md
