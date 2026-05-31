@@ -39,6 +39,42 @@ describe("createSourceSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects link-local IPv4 URLs to prevent metadata-service SSRF", () => {
+    const result = createSourceSchema.safeParse({
+      name: "Metadata Feed",
+      url: "http://169.254.169.254/latest/meta-data",
+      type: SourceType.RSS,
+      trustScore: 0.5,
+      enabled: true
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects IPv4-mapped IPv6 loopback URLs to prevent SSRF bypasses", () => {
+    const result = createSourceSchema.safeParse({
+      name: "Mapped Loopback Feed",
+      url: "http://[::ffff:127.0.0.1]/rss.xml",
+      type: SourceType.RSS,
+      trustScore: 0.5,
+      enabled: true
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects IPv6 link-local URLs to prevent SSRF bypasses", () => {
+    const result = createSourceSchema.safeParse({
+      name: "IPv6 Link Local Feed",
+      url: "http://[fe80::1]/rss.xml",
+      type: SourceType.RSS,
+      trustScore: 0.5,
+      enabled: true
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects invalid trust scores", () => {
     const result = createSourceSchema.safeParse({
       name: "Bad Trust",
@@ -61,4 +97,3 @@ describe("updateSourceSchema", () => {
     expect(result.success).toBe(true);
   });
 });
-
