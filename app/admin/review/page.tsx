@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ReviewActions } from "@/components/review-actions";
 import { BulkApproveButton } from "@/components/bulk-approve-button";
 import { EnrichButton } from "@/components/enrich-button";
+import { AutoEnricher } from "@/components/auto-enricher";
 import { AdminGate } from "@/components/admin-gate";
 import { prisma } from "@/lib/db";
 import { rankMergeSuggestions } from "@/lib/review/merge-suggestions";
@@ -75,18 +76,14 @@ export default async function ReviewPage({
       }
     }),
     prisma.$queryRaw<[{
-      total: bigint;
-      ai_extraction: bigint;
-      ai_location: bigint;
-      geocoder_used: bigint;
-      auto_published: bigint;
+      ai_enriched: bigint;
+      published: bigint;
+      rejected: bigint;
     }]>`
       SELECT
-        count(*)::int                                                             AS total,
-        count(*) FILTER (WHERE "aiEnhanced" = true)::int                         AS ai_extraction,
-        count(*) FILTER (WHERE signals::text LIKE '%location:ai-city%')::int     AS ai_location,
-        count(*) FILTER (WHERE "geocoderUsed" = true)::int                       AS geocoder_used,
-        count(*) FILTER (WHERE status = 'PUBLISHED')::int                        AS auto_published
+        count(*) FILTER (WHERE "aiEnhanced" = true)::int  AS ai_enriched,
+        count(*) FILTER (WHERE status = 'PUBLISHED')::int AS published,
+        count(*) FILTER (WHERE status = 'REJECTED')::int  AS rejected
       FROM "RiskEvent"
     `,
     prisma.rawArticle.count({ where: { aiPending: true } }),
@@ -99,11 +96,9 @@ export default async function ReviewPage({
   ]);
 
   const stats = pipelineStats[0];
-  const statTotal = Number(stats.total);
-  const statAiExtraction = Number(stats.ai_extraction);
-  const statAiLocation = Number(stats.ai_location);
-  const statGeocoderUsed = Number(stats.geocoder_used);
-  const statAutoPublished = Number(stats.auto_published);
+  const statAiEnriched = Number(stats.ai_enriched);
+  const statPublished = Number(stats.published);
+  const statRejected = Number(stats.rejected);
   const statAiPending = aiPendingCount;
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -111,6 +106,7 @@ export default async function ReviewPage({
   return (
     <AdminGate>
     <div className="max-w-[1600px] mx-auto px-6 py-8">
+      <AutoEnricher eventIds={events.filter((e) => !e.aiEnhanced).map((e) => e.id)} />
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
@@ -128,42 +124,39 @@ export default async function ReviewPage({
         </div>
       </div>
 
-      {/* Pipeline AI stats */}
-      {(statTotal > 0 || statAiPending > 0) && (
-        <div className="mb-6 grid grid-cols-2 sm:grid-cols-6 gap-3">
-          <div className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Total events</div>
-            <div className="text-2xl font-bold text-[#e1e2ec]">{statTotal}</div>
-          </div>
-          <div className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Auto-published</div>
-            <div className="text-2xl font-bold text-[#4edea3]">{statAutoPublished}</div>
-            <div className="text-[10px] text-[#8c909f] mt-0.5">{statTotal > 0 ? Math.round(statAutoPublished / statTotal * 100) : 0}% of total</div>
-          </div>
-          <div className="rounded-lg border border-[#3b82f6]/30 bg-[#3b82f6]/5 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#3b82f6]/70 mb-1">AI extraction</div>
-            <div className="text-2xl font-bold text-[#3b82f6]">{statAiExtraction}</div>
-            <div className="text-[10px] text-[#8c909f] mt-0.5">{statTotal > 0 ? Math.round(statAiExtraction / statTotal * 100) : 0}% of total</div>
-          </div>
-          <div className="rounded-lg border border-[#a78bfa]/30 bg-[#a78bfa]/5 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#a78bfa]/70 mb-1">AI location</div>
-            <div className="text-2xl font-bold text-[#a78bfa]">{statAiLocation}</div>
-            <div className="text-[10px] text-[#8c909f] mt-0.5">
-              {statAiLocation === 0 ? "none yet" : `${Math.round(statAiLocation / statTotal * 100)}% of total`}
-            </div>
-          </div>
-          <div className="rounded-lg border border-[#4edea3]/30 bg-[#4edea3]/5 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#4edea3]/70 mb-1">Geocoded</div>
-            <div className="text-2xl font-bold text-[#4edea3]">{statGeocoderUsed}</div>
-            <div className="text-[10px] text-[#8c909f] mt-0.5">{statTotal > 0 ? Math.round(statGeocoderUsed / statTotal * 100) : 0}% of total</div>
-          </div>
-          <div className="rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/5 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[#f59e0b]/70 mb-1">AI Pending</div>
-            <div className="text-2xl font-bold text-[#f59e0b]">{statAiPending}</div>
-            <div className="text-[10px] text-[#8c909f] mt-0.5">{statAiPending === 0 ? "all enriched" : "awaiting enrichment"}</div>
-          </div>
+      {/* Pipeline stats */}
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {/* Needs review — главная метрика для ревьюера */}
+        <div className="rounded-lg border border-[#ffb786]/30 bg-[#ffb786]/5 px-4 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-[#ffb786]/70 mb-1">Needs review</div>
+          <div className="text-2xl font-bold text-[#ffb786]">{total}</div>
+          <div className="text-[10px] text-[#8c909f] mt-0.5">{total === 0 ? "queue empty" : "awaiting decision"}</div>
         </div>
-      )}
+        {/* AI pending — сколько ещё в очереди обогащения */}
+        <div className="rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/5 px-4 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-[#f59e0b]/70 mb-1">AI pending</div>
+          <div className="text-2xl font-bold text-[#f59e0b]">{statAiPending}</div>
+          <div className="text-[10px] text-[#8c909f] mt-0.5">{statAiPending === 0 ? "all enriched" : "awaiting enrichment"}</div>
+        </div>
+        {/* AI enriched — AI отработал */}
+        <div className="rounded-lg border border-[#3b82f6]/30 bg-[#3b82f6]/5 px-4 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-[#3b82f6]/70 mb-1">AI enriched</div>
+          <div className="text-2xl font-bold text-[#3b82f6]">{statAiEnriched}</div>
+          <div className="text-[10px] text-[#8c909f] mt-0.5">events enhanced by Groq</div>
+        </div>
+        {/* Published — итоговый результат */}
+        <div className="rounded-lg border border-[#4edea3]/30 bg-[#4edea3]/5 px-4 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-[#4edea3]/70 mb-1">Published</div>
+          <div className="text-2xl font-bold text-[#4edea3]">{statPublished}</div>
+          <div className="text-[10px] text-[#8c909f] mt-0.5">live on map & feed</div>
+        </div>
+        {/* Rejected — отфильтровано */}
+        <div className="rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f] mb-1">Rejected</div>
+          <div className="text-2xl font-bold text-[#8c909f]">{statRejected}</div>
+          <div className="text-[10px] text-[#8c909f] mt-0.5">filtered out</div>
+        </div>
+      </div>
 
       {events.length === 0 && pendingArticles.length === 0 && page === 1 ? (
         <EmptyState

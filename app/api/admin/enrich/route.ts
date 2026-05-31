@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
-import { enrichPendingArticles } from "@/lib/pipeline/ai-enrichment";
+import { enrichPendingArticles, enrichEvent } from "@/lib/pipeline/ai-enrichment";
 
 const schema = z.object({
-  articleId: z.string().optional()
+  articleId: z.string().optional(),
+  eventId: z.string().optional()
 });
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -12,7 +13,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (unauthorized) return unauthorized;
 
   const body = schema.safeParse(await request.json().catch(() => ({})));
-  const articleId = body.success ? body.data.articleId : undefined;
+  const { articleId, eventId } = body.success ? body.data : {};
+
+  if (eventId) {
+    const result = await enrichEvent(eventId);
+    return NextResponse.json(result);
+  }
 
   const result = await enrichPendingArticles(20, articleId);
   return NextResponse.json(result);

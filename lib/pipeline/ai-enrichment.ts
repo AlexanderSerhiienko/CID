@@ -198,3 +198,69 @@ export async function enrichPendingArticles(
 
   return { processed, notRisk, skipped, remaining };
 }
+
+// ── Per-event enrichment ──────────────────────────────────────────────────────
+// Updates an existing RiskEvent with Groq extraction results.
+// Used by the "Enrich" button in the review queue alongside Approve/Reject/Edit/Merge.
+
+export type EventEnrichmentResult =
+  | { ok: true; notRisk: false }
+  | { ok: true; notRisk: true }
+  | { ok: false; error: string };
+
+export async function enrichEvent(eventId: string): Promise<EventEnrichmentResult> {
+  const event = await prisma.riskEvent.findUnique({
+    where: { id: eventId },
+    include: { rawArticles: { take: 1, select: { rawText: true } } }
+  });
+
+  if (!event) return { ok: false, error: "Event not found" };
+  if (event.aiEnhanced) return { ok: true, notRisk: false }; // already enriched
+  const rawText = event.rawArticles[0]?.rawText ?? "";
+
+  const aiResult = await extractWithAIThrottled(event.title, rawText);
+  if (!aiResult) return { ok: false, error: "AI unavailable or rate-limited" };
+  if (!aiResult.isRiskEvent) return { ok: true, notRisk: true };
+
+  // Geocode if AI found a city that the event doesn't have yet
+  let geocoderUsed = event.geocoderUsed;
+  const locationPatch: Record<string, unknown> = {};
+
+  if (aiResult.city && !event.city) {
+    const aiCountry = aiResult.country ?? event.country ?? undefined;
+    const query = aiCountry ? `${aiResult.city}, ${aiCountry}` : aiResult.city;
+    const geocoded = await geocodeLocation(query);
+    if (geocoded) {
+      geocoderUsed = true;
+      locationPatch.city = aiResult.city;
+      locationPatch.latitude = geocoded.lat;
+      locationPatch.longitude = geocoded.lon;
+      locationPatch.locationConfidence = Math.max(event.locationConfidence, geocoded.confidence);
+    }
+  } else if (aiResult.country && !event.country) {
+    locationPatch.country = aiResult.country;
+    if (event.locationConfidence === 0) locationPatch.locationConfidence = 0.6;
+  }
+
+  // Confidence bonus if AI resolved an UNKNOWN category
+  const confidenceBonus =
+    event.category === EventCategory.UNKNOWN && aiResult.category !== EventCategory.UNKNOWN
+      ? CONFIDENCE_CATEGORY_BONUS
+      : 0;
+
+  await prisma.riskEvent.update({
+    where: { id: eventId },
+    data: {
+      category: aiResult.category as EventCategory,
+      severity: aiResult.severity as typeof event.severity,
+      summary: aiResult.summary,
+      aiEnhanced: true,
+      extractionSource: "ai",
+      geocoderUsed,
+      confidence: Math.min(1, Number((event.confidence + confidenceBonus).toFixed(2))),
+      ...locationPatch
+    }
+  });
+
+  return { ok: true, notRisk: false };
+}
