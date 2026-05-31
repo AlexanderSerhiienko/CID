@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db";
-import { enqueueIngest } from "@/lib/pipeline/ingest-queue";
+import { ingestSourcesWithTimeLimit, getContinueUrl } from "@/lib/pipeline/timed-ingest";
 
 const ingestSchema = z.object({
   sourceId: z.string().optional()
@@ -21,20 +21,32 @@ export async function POST(request: NextRequest) {
   }
 
   const sources = payload.data.sourceId
-    ? await prisma.source.findMany({ where: { id: payload.data.sourceId, enabled: true } })
-    : await prisma.source.findMany({ where: { enabled: true } });
+    ? await prisma.source.findMany({ where: { id: payload.data.sourceId, enabled: true }, select: { id: true } })
+    : await prisma.source.findMany({ where: { enabled: true }, select: { id: true } });
 
-  const results = await Promise.all(
-    sources.map(async (source) => {
-      try {
-        const result = await enqueueIngest(source.id);
-        return { sourceId: source.id, sourceName: source.name, ok: true, result };
-      } catch (err) {
-        const error = err instanceof Error ? err.message : "Unknown ingestion error";
-        return { sourceId: source.id, sourceName: source.name, ok: false, error };
-      }
-    })
-  );
+  const sourceIds = sources.map((s) => s.id);
 
-  return NextResponse.json({ results });
+  const { processed, remaining, results } = await ingestSourcesWithTimeLimit(sourceIds);
+
+  // If there are remaining sources that didn't fit within the time limit,
+  // fire a continuation request (same pattern as the cron endpoint).
+  if (remaining.length > 0) {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      fetch(getContinueUrl(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cronSecret}`
+        },
+        body: JSON.stringify({ sourceIds: remaining })
+      }).catch((e: unknown) => {
+        console.error("ingest/rss: continuation fetch failed — remaining sources will not be processed", e);
+      });
+    } else {
+      console.warn("ingest/rss: CRON_SECRET not set — cannot schedule continuation for remaining sources", remaining);
+    }
+  }
+
+  return NextResponse.json({ processed, remaining, results });
 }

@@ -298,10 +298,11 @@ export async function ingestRssSource(sourceId: string) {
       continue;
     }
 
-    // AI extraction: guarded by circuit breaker. Runs after dedup to avoid wasting
-    // Groq calls on duplicate articles. Skipped for GeoRSS feeds (coordinates already precise).
-    // AI is now the primary source for category, severity, summary, and location.
-    // Rules are the fallback when AI is unavailable.
+    // AI extraction: rate-limited via extractWithAIThrottled (2.1 s between calls).
+    // Runs after dedup to avoid wasting Groq calls on duplicate articles.
+    // Skipped for GeoRSS feeds (coordinates already precise).
+    // AI is the primary source for category, severity, summary, and location;
+    // rules are the fallback when AI is unavailable or returns null.
     let aiEnhanced = false;
     let extractionSource = geoCoords ? "georss" : "rules";
     if (!geoCoords) {

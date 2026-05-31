@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { ingestSourcesWithTimeLimit, getContinueUrl } from "@/lib/pipeline/timed-ingest";
-
-const GROQ_MIN_INTERVAL_MS = 2_100;
+import { GROQ_MIN_INTERVAL_MS } from "@/lib/pipeline/ai-extraction";
 
 const schema = z.object({
   sourceIds: z.array(z.string()).min(1)

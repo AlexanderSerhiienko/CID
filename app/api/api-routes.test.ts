@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
       count: vi.fn()
     }
   },
-  ingestRssSource: vi.fn(),
+  ingestSourcesWithTimeLimit: vi.fn(),
   mergeRiskEvent: vi.fn()
 }));
 
@@ -27,8 +27,9 @@ vi.mock("@/lib/db", () => ({
   prisma: mocks.prisma
 }));
 
-vi.mock("@/lib/pipeline/rss", () => ({
-  ingestRssSource: mocks.ingestRssSource
+vi.mock("@/lib/pipeline/timed-ingest", () => ({
+  ingestSourcesWithTimeLimit: mocks.ingestSourcesWithTimeLimit,
+  getContinueUrl: () => "http://localhost:3000/api/admin/ingest-continue"
 }));
 
 vi.mock("@/lib/review/merge", () => ({
@@ -110,12 +111,18 @@ describe("protected API route contracts", () => {
   });
 
   it("runs RSS ingestion for enabled sources with a valid admin token", async () => {
-    mocks.prisma.source.findMany.mockResolvedValue([{ id: "source-1", name: "WHO", enabled: true }]);
-    mocks.ingestRssSource.mockResolvedValue({
-      sourceId: "source-1",
-      createdArticles: 2,
-      duplicateArticles: 0,
-      candidateEvents: 1
+    mocks.prisma.source.findMany.mockResolvedValue([{ id: "source-1" }]);
+    mocks.ingestSourcesWithTimeLimit.mockResolvedValue({
+      processed: ["source-1"],
+      remaining: [],
+      results: [
+        {
+          sourceId: "source-1",
+          sourceName: "WHO",
+          ok: true,
+          result: { sourceId: "source-1", createdArticles: 2, duplicateArticles: 0, candidateEvents: 1 }
+        }
+      ]
     });
 
     const response = await ingestPost(
@@ -123,6 +130,8 @@ describe("protected API route contracts", () => {
     );
 
     await expect(response.json()).resolves.toEqual({
+      processed: ["source-1"],
+      remaining: [],
       results: [
         {
           sourceId: "source-1",
@@ -133,8 +142,8 @@ describe("protected API route contracts", () => {
       ]
     });
     expect(response.status).toBe(200);
-    expect(mocks.prisma.source.findMany).toHaveBeenCalledWith({ where: { enabled: true } });
-    expect(mocks.ingestRssSource).toHaveBeenCalledWith("source-1");
+    expect(mocks.prisma.source.findMany).toHaveBeenCalledWith({ where: { enabled: true }, select: { id: true } });
+    expect(mocks.ingestSourcesWithTimeLimit).toHaveBeenCalledWith(["source-1"]);
   });
 
   it("approves a review event with a valid admin token", async () => {
