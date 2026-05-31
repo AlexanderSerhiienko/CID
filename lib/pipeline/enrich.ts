@@ -47,7 +47,7 @@ export async function enrichEventsWithGroq(): Promise<EnrichResult> {
 
     const signals = (event.signals as Prisma.JsonArray)
       .filter((s): s is Prisma.JsonObject => s !== null && typeof s === "object" && !Array.isArray(s))
-      .filter((s) => !s["label"]?.toString().startsWith("ai:"));
+      .filter((s) => !(typeof s["label"] === "string" && s["label"].startsWith("ai:")));
 
     const updatedSignals: Prisma.InputJsonValue[] = [
       ...signals,
