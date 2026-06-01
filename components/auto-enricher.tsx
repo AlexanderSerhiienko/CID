@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAdminHeaders } from "@/lib/admin-client";
 
@@ -19,6 +19,7 @@ type ProcessNextResult = {
 export function AutoEnricher() {
   const router = useRouter();
   const started = useRef(false);
+  const [enriching, setEnriching] = useState(true);
 
   useEffect(() => {
     if (started.current) return;
@@ -39,15 +40,27 @@ export function AutoEnricher() {
         }
 
         router.refresh();
-        if (result.done) break;
+        if (result.done) {
+          setEnriching(false);
+          break;
+        }
 
         // 5s between calls keeps client-triggered enrichment comfortably below Groq rate limits.
         await new Promise((r) => setTimeout(r, 5_000));
       }
+
+      setEnriching(false);
     }
 
     run();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return null;
+  if (!enriching) return null;
+
+  return (
+    <div className="flex items-center gap-2 text-sm text-[#8c909f]" aria-live="polite">
+      <span className="h-2 w-2 animate-pulse rounded-full bg-[#f59e0b]" aria-hidden="true" />
+      <span>Enriching...</span>
+    </div>
+  );
 }

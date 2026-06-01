@@ -108,12 +108,11 @@ export default async function ReviewPage({
   return (
     <AdminGate>
       <div className="max-w-[1600px] mx-auto px-6 py-8">
-        {tab !== "filtered" && <AutoEnricher />}
-
         {/* Header */}
         <div className="mb-5 flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-[#e1e2ec] tracking-tight">Admin Review</h1>
           <div className="flex items-center gap-3">
+            {tab !== "filtered" && <AutoEnricher />}
             {tab === "ai" && aiEnrichedCount > 0 && <BulkApproveButton pendingCount={aiEnrichedCount} />}
           </div>
         </div>
