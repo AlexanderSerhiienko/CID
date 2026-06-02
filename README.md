@@ -158,14 +158,6 @@ npm run test
 npm run build
 ```
 
-## Architecture Decisions
-
-Architecture Decision Records are stored in `docs/adr/`.
-
-- [ADR 001: AI-Assisted Engineering Workflow](docs/adr/001-ai-assisted-engineering-workflow.md)
-- [ADR 002: Hybrid Extraction With Rules Before Groq](docs/adr/002-hybrid-extraction-rules-before-groq.md)
-- [ADR 003: Vercel Cron Inline Ingestion](docs/adr/003-vercel-cron-inline-ingestion.md)
-- [ADR 004: First Vertical Slice Before Feature Expansion](docs/adr/004-first-vertical-slice-before-feature-expansion.md)
 
 ## Demo Script
 
