@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { PrismaClient, EventStatus } from "@prisma/client";
-import { ingestRssSource } from "../lib/pipeline/rss";
+import { ingestSourcesWithTimeLimit } from "../lib/pipeline/timed-ingest";
 
 const prisma = new PrismaClient();
 
@@ -194,8 +194,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const sources = args?.sourceId
         ? await prisma.source.findMany({
             where: { id: String(args.sourceId), enabled: true },
+            select: { id: true },
           })
-        : await prisma.source.findMany({ where: { enabled: true } });
+        : await prisma.source.findMany({ where: { enabled: true }, select: { id: true } });
 
       if (sources.length === 0) {
         return {
@@ -203,23 +204,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const results = [];
-      for (const source of sources) {
-        try {
-          const result = await ingestRssSource(source.id);
-          results.push({ sourceId: source.id, name: source.name, ok: true, result });
-        } catch (error) {
-          results.push({
-            sourceId: source.id,
-            name: source.name,
-            ok: false,
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
-        }
-      }
+      // Use the shared queue-serialized, time-limited path so ingestion respects the
+      // 50s budget and Groq rate limiting instead of firing every source unbounded.
+      const { processed, remaining, results } = await ingestSourcesWithTimeLimit(
+        sources.map((s) => s.id)
+      );
 
       return {
-        content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
+        content: [
+          { type: "text", text: JSON.stringify({ processed, remaining, results }, null, 2) },
+        ],
       };
     }
 
