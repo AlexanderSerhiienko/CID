@@ -20,7 +20,6 @@ import { scoreCandidate } from "@/lib/pipeline/scoring";
 import { isDuplicateCandidate } from "@/lib/pipeline/deduplication";
 
 const BATCH_SIZE = 10;       // ~50s at 5s/call — fits inside a 60s serverless window
-const LOOKBACK_DAYS = 7;     // only enrich articles ingested in the last 7 days
 
 export type EnrichmentResult = {
   processed: number; // AI ran and RiskEvent was created (or linked to existing)
@@ -33,12 +32,10 @@ export async function enrichPendingArticles(
   batchSize = BATCH_SIZE,
   articleId?: string
 ): Promise<EnrichmentResult> {
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1_000);
-
   const articles = await prisma.rawArticle.findMany({
     where: articleId
       ? { id: articleId, aiPending: true }
-      : { aiPending: true, createdAt: { gte: since } },
+      : { aiPending: true },
     orderBy: { createdAt: "asc" },
     take: articleId ? 1 : batchSize,
     include: { source: { select: { id: true, trustScore: true, type: true } } }
@@ -203,7 +200,7 @@ export async function enrichPendingArticles(
   }
 
   const remaining = await prisma.rawArticle.count({
-    where: { aiPending: true, createdAt: { gte: since } }
+    where: { aiPending: true }
   });
 
   return { processed, notRisk, skipped, remaining };
