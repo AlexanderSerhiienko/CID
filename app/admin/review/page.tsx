@@ -129,7 +129,7 @@ export default async function ReviewPage({
         {/* Compact stats bar */}
         <div className="mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-2.5 text-sm">
           <span className="text-[9px] font-bold uppercase tracking-widest text-[#424754]">Articles</span>
-          <div className="flex items-baseline gap-1.5">
+          <div className="flex items-baseline gap-1.5" title="An article finishes as a new event, as evidence merged into an existing event, or as Filtered by AI.">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">Enriching</span>
             <span className={aiPendingCount > 0 ? "font-semibold text-[#f59e0b]" : "font-semibold text-[#8c909f]"}>
               {aiPendingCount}
