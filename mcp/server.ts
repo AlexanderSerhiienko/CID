@@ -5,6 +5,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { PrismaClient, EventStatus } from "@prisma/client";
+import { ingestRssSource } from "../lib/pipeline/rss";
 
 const prisma = new PrismaClient();
 
@@ -142,7 +143,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 riskEvents: {
                   total: totalRiskEvents,
                   byStatus: {
-                    DRAFT: statusCounts.DRAFT ?? 0,
                     NEEDS_REVIEW: statusCounts.NEEDS_REVIEW ?? 0,
                     PUBLISHED: statusCounts.PUBLISHED ?? 0,
                     REJECTED: statusCounts.REJECTED ?? 0,
@@ -191,8 +191,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "trigger_ingestion": {
-      const { ingestRssSource } = await import("../lib/pipeline/rss.js");
-
       const sources = args?.sourceId
         ? await prisma.source.findMany({
             where: { id: String(args.sourceId), enabled: true },
@@ -328,7 +326,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const published = counts.PUBLISHED ?? 0;
       const rejected = counts.REJECTED ?? 0;
       const needsReview = counts.NEEDS_REVIEW ?? 0;
-      const total = published + rejected + needsReview + (counts.DRAFT ?? 0);
+      const total = published + rejected + needsReview;
 
       if (total === 0) {
         return {

@@ -32,7 +32,7 @@ describe("pipeline behavior", () => {
     expect(scored.status).toBe(EventStatus.NEEDS_REVIEW);
   });
 
-  it("auto-publishes high-confidence high-severity located risk events (standard path)", () => {
+  it("sends high-confidence high-severity located risk events to NEEDS_REVIEW", () => {
     const scored = scoreCandidate({
       category: EventCategory.DISEASE_OUTBREAK,
       severity: Severity.MEDIUM,
@@ -42,12 +42,7 @@ describe("pipeline behavior", () => {
       rawText: "Officials confirmed cases and hospitalized patients."
     });
 
-    expect(scored.status).toBe(EventStatus.PUBLISHED);
-    expect(scored.signals).toContainEqual(
-      expect.objectContaining({
-        label: "status:auto_published"
-      })
-    );
+    expect(scored.status).toBe(EventStatus.NEEDS_REVIEW);
   });
 
   it("keeps low-severity high-confidence events in review (standard path)", () => {
@@ -63,20 +58,17 @@ describe("pipeline behavior", () => {
     expect(scored.status).toBe(EventStatus.NEEDS_REVIEW);
   });
 
-  it("auto-publishes OFFICIAL_FEED events at MEDIUM severity without location requirement", () => {
+  it("sends OFFICIAL_FEED events to NEEDS_REVIEW regardless of severity", () => {
     const scored = scoreCandidate({
       category: EventCategory.NATURAL_DISASTER,
       severity: Severity.MEDIUM,
       confidence: 0.4,
-      locationConfidence: 0, // no location — would fail standard path
+      locationConfidence: 0,
       source: { trustScore: 0.9, type: SourceType.OFFICIAL_FEED },
       rawText: "M 5.2 earthquake near the coast of Japan."
     });
 
-    expect(scored.status).toBe(EventStatus.PUBLISHED);
-    expect(scored.signals).toContainEqual(
-      expect.objectContaining({ label: "status:auto_published" })
-    );
+    expect(scored.status).toBe(EventStatus.NEEDS_REVIEW);
   });
 
   it("keeps OFFICIAL_FEED LOW severity events in review", () => {

@@ -216,7 +216,7 @@ describe("scoreCandidate", () => {
     expect(score.severity).toBe(Severity.CRITICAL);
   });
 
-  it("auto-publishes confident high-severity located candidates", () => {
+  it("sends confident high-severity located candidates to NEEDS_REVIEW", () => {
     const score = scoreCandidate({
       category: EventCategory.NATURAL_DISASTER,
       severity: Severity.MEDIUM,
@@ -226,6 +226,6 @@ describe("scoreCandidate", () => {
       rawText: "confirmed flood emergency with evacuation and deaths"
     });
 
-    expect(score.status).toBe(EventStatus.PUBLISHED);
+    expect(score.status).toBe(EventStatus.NEEDS_REVIEW);
   });
 });

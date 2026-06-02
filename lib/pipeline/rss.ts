@@ -223,7 +223,7 @@ export async function ingestRssSource(sourceId: string) {
 
       const geoDuplicate = recentEvents
         .filter((e) => e.category === extracted.category && (extracted.country === null || e.country === extracted.country))
-        .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e));
+        .find((e) => isDuplicateCandidate({ ...extracted, publishedAt: new Date() }, e));
 
       if (geoDuplicate) {
         await prisma.$transaction(async (tx) => {
@@ -305,7 +305,7 @@ export async function ingestRssSource(sourceId: string) {
       // the AI enrichment step re-checks after Groq resolves the category.
       const existingEvent = recentEvents
         .filter((e) => e.category === extracted.category && (extracted.country === null || e.country === extracted.country))
-        .find((e) => isDuplicateCandidate({ ...extracted, publishedAt }, e));
+        .find((e) => isDuplicateCandidate({ ...extracted, publishedAt: new Date() }, e));
 
       if (existingEvent) {
         await prisma.$transaction(async (tx) => {

@@ -98,7 +98,7 @@ describe("scoreCandidate", () => {
   });
 
   describe("auto-publish: standard source", () => {
-    it("auto-publishes when confidence >= 0.8, locationConfidence >= 0.6, severity HIGH", () => {
+    it("sends high-confidence high-severity located events to NEEDS_REVIEW", () => {
       const result = scoreCandidate({
         category: EventCategory.NATURAL_DISASTER,
         severity: Severity.HIGH,
@@ -107,7 +107,7 @@ describe("scoreCandidate", () => {
         source: { trustScore: 0.8, type: SourceType.RSS }, // 0.6 + 0.8*0.25 = 0.8
         rawText: "Flood reported."
       });
-      expect(result.status).toBe(EventStatus.PUBLISHED);
+      expect(result.status).toBe(EventStatus.NEEDS_REVIEW);
     });
 
     it("sends to NEEDS_REVIEW when confidence below threshold", () => {
@@ -147,8 +147,8 @@ describe("scoreCandidate", () => {
     });
   });
 
-  describe("auto-publish: official feed", () => {
-    it("auto-publishes official feed at MEDIUM severity and confidence >= 0.6", () => {
+  describe("official feed scoring", () => {
+    it("sends official feed events to NEEDS_REVIEW", () => {
       const result = scoreCandidate({
         category: EventCategory.DISEASE_OUTBREAK,
         severity: Severity.MEDIUM,
@@ -157,7 +157,7 @@ describe("scoreCandidate", () => {
         source: officialSource, // 0.5 + 0.9*0.25 = 0.725 >= 0.6
         rawText: "WHO advisory issued."
       });
-      expect(result.status).toBe(EventStatus.PUBLISHED);
+      expect(result.status).toBe(EventStatus.NEEDS_REVIEW);
     });
 
     it("sends official feed to NEEDS_REVIEW when confidence below 0.6", () => {

@@ -1,4 +1,4 @@
-import { EventCategory, EventStatus, Severity, Source, SourceType } from "@prisma/client";
+import { EventCategory, EventStatus, Severity, Source } from "@prisma/client";
 import { PipelineSignal } from "@/lib/pipeline/extraction";
 import { clamp } from "@/lib/utils";
 
@@ -89,28 +89,7 @@ export function scoreCandidate(input: {
     });
   }
 
-  const isOfficialFeed = input.source.type === SourceType.OFFICIAL_FEED;
-
-  const shouldAutoPublish = canAutoPublish({
-    confidence,
-    locationConfidence: input.locationConfidence,
-    severity,
-    category: input.category,
-    isOfficialFeed
-  });
-
-  if (shouldAutoPublish) {
-    const reason = isOfficialFeed
-      ? "Official-feed event at MEDIUM+ severity auto-published without manual review."
-      : "High-confidence, high-severity located event can be published without manual review.";
-    signals.push({
-      kind: "confidence",
-      label: "status:auto_published",
-      detail: reason
-    });
-  }
-
-  const status = shouldAutoPublish ? EventStatus.PUBLISHED : EventStatus.NEEDS_REVIEW;
+  const status = EventStatus.NEEDS_REVIEW;
 
   return {
     confidence: Number(confidence.toFixed(2)),

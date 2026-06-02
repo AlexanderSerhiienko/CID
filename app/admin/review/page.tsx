@@ -361,9 +361,6 @@ function EventCard({
               {event.category.replace(/_/g, " ")}
             </span>
             <span className="text-[10px] font-mono text-[#4edea3]">{Math.round(event.confidence * 100)}% conf.</span>
-            {event.aiEnhanced && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-[#3b82f6]/30 text-[#3b82f6] bg-[#3b82f6]/10">AI</span>
-            )}
             {event.geocoderUsed && (
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-[#4edea3]/30 text-[#4edea3] bg-[#4edea3]/10">Geocoded</span>
             )}
