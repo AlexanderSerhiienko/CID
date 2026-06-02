@@ -21,18 +21,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  const LOOKBACK_DAYS = 7;
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1_000);
-
   // 1. Pending articles take priority — they need to become events first
   const pendingCount = await prisma.rawArticle.count({
-    where: { aiPending: true, createdAt: { gte: since } }
+    where: { aiPending: true }
   });
 
   if (pendingCount > 0) {
     const result = await enrichPendingArticles(1); // process exactly one
     const remaining = await prisma.rawArticle.count({
-      where: { aiPending: true, createdAt: { gte: since } }
+      where: { aiPending: true }
     });
     if (result.skipped > 0 && result.processed === 0 && result.notRisk === 0) {
       return NextResponse.json({ done: true, kind: "article", remaining } satisfies ProcessNextResult);
