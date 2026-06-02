@@ -157,8 +157,8 @@ export async function ingestRssSource(sourceId: string) {
   const recentEvents: DedupEvent[] = await prisma.riskEvent.findMany({
     where: {
       createdAt: { gte: fiveDaysAgo },
-      // Exclude REJECTED and DRAFT events — linking new articles to dead events
-      // buries evidence silently and prevents it from reaching the review queue.
+      // Only link against live events (NEEDS_REVIEW, PUBLISHED). Excluding REJECTED
+      // prevents burying new evidence on a dead event and keeps it in the review queue.
       status: { in: [EventStatus.NEEDS_REVIEW, EventStatus.PUBLISHED] }
     },
     orderBy: { createdAt: "desc" },
