@@ -146,7 +146,6 @@ components/             # React components (shadcn/ui based)
 prisma/
   schema.prisma         # Source, RawArticle, RiskEvent models
   seed.ts               # 10 pre-configured sources
-docs/adr/               # Architecture Decision Records
 ```
 
 ---
@@ -256,13 +255,6 @@ rawText → deterministic rules → [optional Groq] → Zod validation → fallb
 - Deterministic rules are always the fallback
 
 ---
-
-## Architecture Decision Records
-
-- `docs/adr/001` — AI-Assisted Engineering Workflow
-- `docs/adr/002` — Hybrid Extraction: Rules Before Groq
-- `docs/adr/003` — Vercel Cron Inline Ingestion
-- `docs/adr/004` — First Vertical Slice Before Feature Expansion
 
 ---
 
