@@ -1,25 +1,17 @@
 "use client";
 
 import { KeyRound } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
-import { ADMIN_TOKEN_STORAGE_KEY } from "@/lib/admin-client";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { setAdminToken } from "@/lib/admin-client";
 
-export function AdminGate({ children }: { children: ReactNode }) {
+// Unlock form shown by server components when the admin cookie is missing/invalid.
+// On submit it stores the token (localStorage + cookie) and refreshes so the server
+// re-reads the cookie and renders the protected content.
+export function AdminGate() {
+  const router = useRouter();
   const [token, setToken] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
   const [error, setError] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
-    if (saved) {
-      setUnlocked(true);
-    }
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-  if (unlocked) return <>{children}</>;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,8 +20,8 @@ export function AdminGate({ children }: { children: ReactNode }) {
       setError(true);
       return;
     }
-    window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, trimmed);
-    setUnlocked(true);
+    setAdminToken(trimmed);
+    router.refresh();
   }
 
   return (

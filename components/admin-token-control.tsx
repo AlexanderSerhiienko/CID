@@ -2,7 +2,7 @@
 
 import { KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ADMIN_TOKEN_STORAGE_KEY } from "@/lib/admin-client";
+import { ADMIN_TOKEN_STORAGE_KEY, setAdminToken, clearAdminToken } from "@/lib/admin-client";
 
 export function AdminTokenControl() {
   const [token, setToken] = useState("");
@@ -14,12 +14,12 @@ export function AdminTokenControl() {
 
   function save() {
     if (token.trim()) {
-      window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token.trim());
+      setAdminToken(token.trim());
       setSaved(true);
       return;
     }
 
-    window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    clearAdminToken();
     setSaved(false);
   }
 
