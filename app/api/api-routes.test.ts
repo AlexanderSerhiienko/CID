@@ -1,4 +1,4 @@
-import { EventCategory, EventStatus, Severity, SourceType } from "@prisma/client";
+import { EventCategory, EventStatus, Prisma, Severity, SourceType } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_TOKEN_HEADER } from "@/lib/auth/constants";
@@ -136,7 +136,12 @@ describe("protected API route contracts", () => {
   });
 
   it("returns 404 when updating a source that does not exist", async () => {
-    mocks.prisma.source.update.mockRejectedValue(new Error("Not found"));
+    mocks.prisma.source.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Record not found", {
+        code: "P2025",
+        clientVersion: "6.18.0"
+      })
+    );
 
     const response = await sourcePatch(
       jsonRequest("/api/sources/unknown", { enabled: false }, { token: "dev-admin-token" }),
@@ -145,6 +150,17 @@ describe("protected API route contracts", () => {
 
     await expect(response.json()).resolves.toEqual({ error: "Source not found." });
     expect(response.status).toBe(404);
+  });
+
+  it("rethrows unexpected DB errors instead of masking them as 404", async () => {
+    mocks.prisma.source.update.mockRejectedValue(new Error("connection lost"));
+
+    await expect(
+      sourcePatch(
+        jsonRequest("/api/sources/source-1", { enabled: false }, { token: "dev-admin-token" }),
+        { params: Promise.resolve({ id: "source-1" }) }
+      )
+    ).rejects.toThrow("connection lost");
   });
 
   it("rejects ingestion without admin token", async () => {
