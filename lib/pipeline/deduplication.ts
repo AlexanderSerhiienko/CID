@@ -39,8 +39,16 @@ export function isDuplicateCandidate(
     return false;
   }
 
-  const eventDate = candidate.publishedAt ?? new Date();
-  const daysApart = Math.abs(eventDate.getTime() - existing.createdAt.getTime()) / 86_400_000;
+  // Without a publish date we cannot verify the candidate falls inside the dedup
+  // window. Be conservative and refuse the merge: a false merge buries evidence on
+  // an unrelated event, which is worse than letting a possible duplicate surface in
+  // the review queue. (Previously this fell back to new Date(), making undated
+  // articles look artificially fresh.)
+  if (candidate.publishedAt === null) {
+    return false;
+  }
+
+  const daysApart = Math.abs(candidate.publishedAt.getTime() - existing.createdAt.getTime()) / 86_400_000;
   if (daysApart > DATE_WINDOW_DAYS) {
     return false;
   }

@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { ingestSourcesWithTimeLimit, getContinueUrl } from "@/lib/pipeline/timed-ingest";
-
-function isCronAuthorized(request: NextRequest): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
-  const auth = request.headers.get("authorization");
-  return auth === `Bearer ${cronSecret}`;
-}
+import { authorizeCron } from "@/lib/auth/cron";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!isCronAuthorized(request)) {
+  const cronSecret = authorizeCron(request);
+  if (!cronSecret) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -23,7 +18,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { processed, remaining, results } = await ingestSourcesWithTimeLimit(sourceIds);
 
   if (remaining.length > 0) {
-    const cronSecret = process.env.CRON_SECRET!;
     fetch(getContinueUrl(), {
       method: "POST",
       headers: {

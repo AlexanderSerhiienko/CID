@@ -1,4 +1,4 @@
-import { EventCategory, EventStatus, Severity, SourceType } from "@prisma/client";
+import { EventCategory, EventStatus, Prisma, Severity, SourceType } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_TOKEN_HEADER } from "@/lib/auth/constants";
@@ -72,7 +72,7 @@ vi.mock("@/lib/pipeline/scoring", () => ({
 
 import { PATCH as reviewPatch } from "@/app/api/admin/review/route";
 import { POST as ingestPost } from "@/app/api/ingest/rss/route";
-import { POST as sourcePost } from "@/app/api/sources/route";
+import { GET as sourceGet, POST as sourcePost } from "@/app/api/sources/route";
 import { GET as eventsGet } from "@/app/api/events/route";
 import { GET as eventGet } from "@/app/api/events/[id]/route";
 import { POST as bulkApprovePost } from "@/app/api/admin/bulk-approve/route";
@@ -93,6 +93,14 @@ describe("protected API route contracts", () => {
     await expect(response.json()).resolves.toEqual({ error: "Admin token required." });
     expect(response.status).toBe(401);
     expect(mocks.prisma.source.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects source listing without admin token", async () => {
+    const response = await sourceGet(getRequest("/api/sources"));
+
+    await expect(response.json()).resolves.toEqual({ error: "Admin token required." });
+    expect(response.status).toBe(401);
+    expect(mocks.prisma.source.findMany).not.toHaveBeenCalled();
   });
 
   it("creates a source with a valid admin token", async () => {
@@ -128,7 +136,12 @@ describe("protected API route contracts", () => {
   });
 
   it("returns 404 when updating a source that does not exist", async () => {
-    mocks.prisma.source.update.mockRejectedValue(new Error("Not found"));
+    mocks.prisma.source.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Record not found", {
+        code: "P2025",
+        clientVersion: "6.18.0"
+      })
+    );
 
     const response = await sourcePatch(
       jsonRequest("/api/sources/unknown", { enabled: false }, { token: "dev-admin-token" }),
@@ -137,6 +150,17 @@ describe("protected API route contracts", () => {
 
     await expect(response.json()).resolves.toEqual({ error: "Source not found." });
     expect(response.status).toBe(404);
+  });
+
+  it("rethrows unexpected DB errors instead of masking them as 404", async () => {
+    mocks.prisma.source.update.mockRejectedValue(new Error("connection lost"));
+
+    await expect(
+      sourcePatch(
+        jsonRequest("/api/sources/source-1", { enabled: false }, { token: "dev-admin-token" }),
+        { params: Promise.resolve({ id: "source-1" }) }
+      )
+    ).rejects.toThrow("connection lost");
   });
 
   it("rejects ingestion without admin token", async () => {

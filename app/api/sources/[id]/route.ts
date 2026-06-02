@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db";
 import { updateSourceSchema } from "@/lib/validation/source";
@@ -22,7 +23,10 @@ export async function PATCH(
   try {
     const source = await prisma.source.update({ where: { id }, data: payload.data });
     return NextResponse.json({ source });
-  } catch {
-    return NextResponse.json({ error: "Source not found." }, { status: 404 });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return NextResponse.json({ error: "Source not found." }, { status: 404 });
+    }
+    throw error;
   }
 }

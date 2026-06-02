@@ -71,6 +71,7 @@ model RawArticle {
   createdAt   DateTime        @default(now())
 
   @@index([sourceId])
+  @@index([riskEventId])
   @@index([publishedAt])
   @@index([aiPending])
   @@index([aiRejected])

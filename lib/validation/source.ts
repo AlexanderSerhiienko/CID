@@ -138,4 +138,8 @@ export const createSourceSchema = z.object({
   trustScore: z.number().min(0).max(1).default(0.5)
 });
 
-export const updateSourceSchema = createSourceSchema.partial();
+export const updateSourceSchema = createSourceSchema
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one field must be provided."
+  });

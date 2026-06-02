@@ -125,4 +125,30 @@ describe("isDuplicateCandidate", () => {
       )
     ).toBe(false);
   });
+
+  it("does not merge a candidate with no publishedAt — recency cannot be verified", () => {
+    // Identical content, but the candidate has no publish date. Previously a null
+    // publishedAt fell back to new Date() and looked artificially fresh, risking a
+    // false merge with a recent unrelated event. It must now refuse the merge.
+    expect(
+      isDuplicateCandidate(
+        {
+          title: "Hantavirus cases reported in Patagonia",
+          summary: "Health officials confirmed cases in southern Argentina.",
+          category: EventCategory.DISEASE_OUTBREAK,
+          country: "Argentina",
+          city: null,
+          publishedAt: null
+        },
+        {
+          title: "Hantavirus cases reported in Patagonia",
+          summary: "Health officials confirmed cases in southern Argentina.",
+          category: EventCategory.DISEASE_OUTBREAK,
+          country: "Argentina",
+          city: null,
+          createdAt: new Date()
+        }
+      )
+    ).toBe(false);
+  });
 });

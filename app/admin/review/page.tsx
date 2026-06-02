@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { EventStatus, Prisma, Severity } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { ReviewActions } from "@/components/review-actions";
@@ -7,6 +8,8 @@ import { AutoEnricher } from "@/components/auto-enricher";
 import { PromoteArticleButton } from "@/components/promote-article-button";
 import { AdminGate } from "@/components/admin-gate";
 import { prisma } from "@/lib/db";
+import { isValidAdminToken } from "@/lib/auth/admin";
+import { ADMIN_TOKEN_COOKIE } from "@/lib/auth/constants";
 import { rankMergeSuggestions } from "@/lib/review/merge-suggestions";
 
 export const dynamic = "force-dynamic";
@@ -34,30 +37,39 @@ export default async function ReviewPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Server-side gate: the page must not render queue data (or run DB queries)
+  // unless the request carries a valid admin token in its cookie. The client
+  // AdminGate below only collects the token; this is the authoritative check.
+  const cookieStore = await cookies();
+  const adminToken = cookieStore.get(ADMIN_TOKEN_COOKIE)?.value ?? null;
+  if (!isValidAdminToken(adminToken)) {
+    return <AdminGate />;
+  }
+
   const params = await searchParams;
   const rawTab = typeof params.tab === "string" ? params.tab : "ai";
   const tab: Tab = rawTab === "georss" ? "georss" : rawTab === "rules" ? "rules" : rawTab === "filtered" ? "filtered" : "ai";
 
   // Always-needed: counts for stats strip + tab badges
-  const [aiEnrichedCount, geoCount, rulesCount, pipelineStats, aiPendingCount, aiRejectedCount] = await Promise.all([
+  const [
+    aiEnrichedCount,
+    geoCount,
+    rulesCount,
+    statAiEnriched,
+    statPublished,
+    statRejected,
+    aiPendingCount,
+    aiRejectedCount,
+  ] = await Promise.all([
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW, aiEnhanced: true } }),
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW, extractionSource: "georss", aiEnhanced: false } }),
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW, extractionSource: "rules", aiEnhanced: false } }),
-    prisma.$queryRaw<[{ ai_enriched: bigint; published: bigint; rejected: bigint }]>`
-      SELECT
-        count(*) FILTER (WHERE "aiEnhanced" = true)::int  AS ai_enriched,
-        count(*) FILTER (WHERE status = 'PUBLISHED')::int AS published,
-        count(*) FILTER (WHERE status = 'REJECTED')::int  AS rejected
-      FROM "RiskEvent"
-    `,
+    prisma.riskEvent.count({ where: { aiEnhanced: true } }),
+    prisma.riskEvent.count({ where: { status: EventStatus.PUBLISHED } }),
+    prisma.riskEvent.count({ where: { status: EventStatus.REJECTED } }),
     prisma.rawArticle.count({ where: { aiPending: true } }),
     prisma.rawArticle.count({ where: { aiRejected: true } }),
   ]);
-
-  const stats = pipelineStats[0];
-  const statAiEnriched = Number(stats.ai_enriched);
-  const statPublished = Number(stats.published);
-  const statRejected = Number(stats.rejected);
 
   // Tab-conditional data
   const mergeWindow = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
@@ -106,7 +118,6 @@ export default async function ReviewPage({
   ]);
 
   return (
-    <AdminGate>
       <div className="max-w-[1600px] mx-auto px-6 py-8">
         {/* Header */}
         <div className="mb-5 flex items-center justify-between">
@@ -280,7 +291,6 @@ export default async function ReviewPage({
           )
         )}
       </div>
-    </AdminGate>
   );
 }
 

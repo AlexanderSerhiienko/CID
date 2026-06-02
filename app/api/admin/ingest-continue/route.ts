@@ -2,20 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { ingestSourcesWithTimeLimit, getContinueUrl } from "@/lib/pipeline/timed-ingest";
 import { GROQ_MIN_INTERVAL_MS } from "@/lib/pipeline/ai-extraction";
+import { authorizeCron } from "@/lib/auth/cron";
 
 const schema = z.object({
   sourceIds: z.array(z.string()).min(1)
 });
 
-function isCronAuthorized(request: NextRequest): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
-  const auth = request.headers.get("authorization");
-  return auth === `Bearer ${cronSecret}`;
-}
-
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!isCronAuthorized(request)) {
+  const cronSecret = authorizeCron(request);
+  if (!cronSecret) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -33,7 +28,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
 
   if (remaining.length > 0) {
-    const cronSecret = process.env.CRON_SECRET!;
     fetch(getContinueUrl(), {
       method: "POST",
       headers: {
