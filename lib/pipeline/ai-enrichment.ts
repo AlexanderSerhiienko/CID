@@ -137,7 +137,7 @@ export async function enrichPendingArticles(
     // Dedup: check if a similar RiskEvent already exists
     const duplicate = recentEvents
       .filter((e) => e.category === extracted.category && (extracted.country === null || e.country === extracted.country))
-      .find((e) => isDuplicateCandidate({ ...extracted, publishedAt: article.publishedAt }, e));
+      .find((e) => isDuplicateCandidate({ ...extracted, publishedAt: article.createdAt }, e));
 
     if (duplicate) {
       await prisma.$transaction(async (tx) => {
