@@ -9,8 +9,7 @@
 import { prisma } from "@/lib/db";
 import { extractWithAIThrottled, GROQ_MODEL } from "@/lib/pipeline/ai-extraction";
 import { geocodeLocation } from "@/lib/pipeline/geocoder";
-import { canAutoPublish } from "@/lib/pipeline/scoring";
-import { EventStatus, SourceType, type Prisma } from "@prisma/client";
+import { type Prisma } from "@prisma/client";
 
 export type EnrichResult = {
   processed: number;
@@ -103,25 +102,6 @@ export async function enrichEventsWithGroq(): Promise<EnrichResult> {
       signals: updatedSignals,
       ...locationUpdate
     };
-
-    // Re-evaluate auto-publish using the same criteria as the normal pipeline.
-    const effectiveLocationConfidence =
-      typeof locationUpdate.locationConfidence === "number"
-        ? locationUpdate.locationConfidence
-        : event.locationConfidence;
-    const isOfficialFeed = article.source?.type === SourceType.OFFICIAL_FEED;
-    if (
-      event.status === EventStatus.NEEDS_REVIEW &&
-      canAutoPublish({
-        confidence: event.confidence,
-        locationConfidence: effectiveLocationConfidence,
-        severity: aiResult.severity,
-        category: aiResult.category,
-        isOfficialFeed
-      })
-    ) {
-      update.status = EventStatus.PUBLISHED;
-    }
 
     try {
       await prisma.riskEvent.update({ where: { id: event.id }, data: update });
