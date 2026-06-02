@@ -97,7 +97,7 @@ describe("scoreCandidate", () => {
     expect(result.severity).toBe(Severity.CRITICAL);
   });
 
-  describe("auto-publish: standard source", () => {
+  describe("status assignment (standard source)", () => {
     it("sends high-confidence high-severity located events to NEEDS_REVIEW", () => {
       const result = scoreCandidate({
         category: EventCategory.NATURAL_DISASTER,

@@ -6,14 +6,6 @@ const TRUST_SCORE_WEIGHT = 0.25;
 const CONFIRMED_CONFIDENCE_BOOST = 0.15;
 const UNCERTAIN_CONFIDENCE_PENALTY = 0.1;
 
-// Standard auto-publish threshold (non-official sources)
-const AUTO_PUBLISH_CONFIDENCE_THRESHOLD = 0.8;
-const AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD = 0.6;
-
-// Relaxed thresholds for OFFICIAL_FEED sources (WHO, USGS, CDC, GDACS, etc.)
-// These sources have high trust scores and are generally reliable without human review.
-const OFFICIAL_FEED_CONFIDENCE_THRESHOLD = 0.6;
-
 const HIGH_SEVERITY_ESCALATION_TERMS = ["death", "deaths", "hospitalized", "evacuation", "critical infrastructure"];
 const CRITICAL_SEVERITY_ESCALATION_TERMS = ["mass casualty", "catastrophic", "state of emergency"];
 
@@ -97,29 +89,4 @@ export function scoreCandidate(input: {
     status,
     signals
   };
-}
-
-export function canAutoPublish(input: {
-  confidence: number;
-  locationConfidence: number;
-  severity: Severity;
-  category: EventCategory;
-  isOfficialFeed: boolean;
-}): boolean {
-  const canAutoPublishAsOfficial =
-    input.isOfficialFeed &&
-    input.confidence >= OFFICIAL_FEED_CONFIDENCE_THRESHOLD &&
-    input.category !== EventCategory.UNKNOWN &&
-    (input.severity === Severity.MEDIUM ||
-      input.severity === Severity.HIGH ||
-      input.severity === Severity.CRITICAL);
-
-  const canAutoPublishStandard =
-    !input.isOfficialFeed &&
-    input.confidence >= AUTO_PUBLISH_CONFIDENCE_THRESHOLD &&
-    input.locationConfidence >= AUTO_PUBLISH_LOCATION_CONFIDENCE_THRESHOLD &&
-    input.category !== EventCategory.UNKNOWN &&
-    (input.severity === Severity.HIGH || input.severity === Severity.CRITICAL);
-
-  return canAutoPublishAsOfficial || canAutoPublishStandard;
 }
