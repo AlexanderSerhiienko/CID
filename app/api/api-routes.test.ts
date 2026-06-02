@@ -72,7 +72,7 @@ vi.mock("@/lib/pipeline/scoring", () => ({
 
 import { PATCH as reviewPatch } from "@/app/api/admin/review/route";
 import { POST as ingestPost } from "@/app/api/ingest/rss/route";
-import { POST as sourcePost } from "@/app/api/sources/route";
+import { GET as sourceGet, POST as sourcePost } from "@/app/api/sources/route";
 import { GET as eventsGet } from "@/app/api/events/route";
 import { GET as eventGet } from "@/app/api/events/[id]/route";
 import { POST as bulkApprovePost } from "@/app/api/admin/bulk-approve/route";
@@ -93,6 +93,14 @@ describe("protected API route contracts", () => {
     await expect(response.json()).resolves.toEqual({ error: "Admin token required." });
     expect(response.status).toBe(401);
     expect(mocks.prisma.source.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects source listing without admin token", async () => {
+    const response = await sourceGet(getRequest("/api/sources"));
+
+    await expect(response.json()).resolves.toEqual({ error: "Admin token required." });
+    expect(response.status).toBe(401);
+    expect(mocks.prisma.source.findMany).not.toHaveBeenCalled();
   });
 
   it("creates a source with a valid admin token", async () => {

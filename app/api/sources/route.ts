@@ -3,7 +3,12 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db";
 import { createSourceSchema } from "@/lib/validation/source";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) {
+    return unauthorized;
+  }
+
   const sources = await prisma.source.findMany({
     orderBy: { createdAt: "desc" },
     select: {
