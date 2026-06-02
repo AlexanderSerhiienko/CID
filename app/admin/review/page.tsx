@@ -55,7 +55,6 @@ export default async function ReviewPage({
     aiEnrichedCount,
     geoCount,
     rulesCount,
-    statAiEnriched,
     statPublished,
     statRejected,
     aiPendingCount,
@@ -64,7 +63,6 @@ export default async function ReviewPage({
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW, aiEnhanced: true } }),
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW, extractionSource: "georss", aiEnhanced: false } }),
     prisma.riskEvent.count({ where: { status: EventStatus.NEEDS_REVIEW, extractionSource: "rules", aiEnhanced: false } }),
-    prisma.riskEvent.count({ where: { aiEnhanced: true } }),
     prisma.riskEvent.count({ where: { status: EventStatus.PUBLISHED } }),
     prisma.riskEvent.count({ where: { status: EventStatus.REJECTED } }),
     prisma.rawArticle.count({ where: { aiPending: true } }),
@@ -130,13 +128,7 @@ export default async function ReviewPage({
 
         {/* Compact stats bar */}
         <div className="mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[#2d2d2d] bg-[#1a1a1a] px-4 py-2.5 text-sm">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">In queue</span>
-            <span className={aiEnrichedCount + geoCount + rulesCount > 0 ? "font-semibold text-[#ffb786]" : "font-semibold text-[#4edea3]"}>
-              {aiEnrichedCount + geoCount + rulesCount}
-            </span>
-          </div>
-          <div className="h-4 w-px bg-[#2d2d2d]" />
+          <span className="text-[9px] font-bold uppercase tracking-widest text-[#424754]">Articles</span>
           <div className="flex items-baseline gap-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">Enriching</span>
             <span className={aiPendingCount > 0 ? "font-semibold text-[#f59e0b]" : "font-semibold text-[#8c909f]"}>
@@ -145,8 +137,16 @@ export default async function ReviewPage({
           </div>
           <div className="h-4 w-px bg-[#2d2d2d]" />
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">AI ready</span>
-            <span className="font-semibold text-[#3b82f6]">{statAiEnriched}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">Filtered by AI</span>
+            <span className="font-semibold text-[#8c909f]">{aiRejectedCount}</span>
+          </div>
+          <div className="h-4 w-px bg-[#424754]" />
+          <span className="text-[9px] font-bold uppercase tracking-widest text-[#424754]">Events</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">Awaiting review</span>
+            <span className={aiEnrichedCount + geoCount + rulesCount > 0 ? "font-semibold text-[#ffb786]" : "font-semibold text-[#4edea3]"}>
+              {aiEnrichedCount + geoCount + rulesCount}
+            </span>
           </div>
           <div className="h-4 w-px bg-[#2d2d2d]" />
           <div className="flex items-baseline gap-1.5">
@@ -155,7 +155,7 @@ export default async function ReviewPage({
           </div>
           <div className="h-4 w-px bg-[#2d2d2d]" />
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">Rejected</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8c909f]">Rejected (manual)</span>
             <span className="font-semibold text-[#8c909f]">{statRejected}</span>
           </div>
         </div>
@@ -172,7 +172,7 @@ export default async function ReviewPage({
             Needs Enrichment
           </TabLink>
           <TabLink href="/admin/review?tab=filtered" active={tab === "filtered"} color="#8c909f" count={aiRejectedCount}>
-            AI Rejected
+            Filtered (AI)
           </TabLink>
         </div>
 
