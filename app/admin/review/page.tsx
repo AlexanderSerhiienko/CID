@@ -378,7 +378,7 @@ function EventCard({
               event.extractionSource === "ai" ? "border-[#3b82f6]/30 text-[#3b82f6]" :
               event.extractionSource === "georss" ? "border-[#4edea3]/30 text-[#4edea3]" : "border-[#424754] text-[#8c909f]"
             }`}>
-              {event.extractionSource}
+              {event.extractionSource === "ai" ? "AI" : event.extractionSource}
             </span>
           </div>
 
